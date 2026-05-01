@@ -40,5 +40,6 @@ sentry = "0.37"
 uuid = { version = "1", features = ["v4"] }
 tempfile = "3"
 sha2 = "0.10"
+bincode = { version = "2", features = ["serde"] }
 
 [dev-dependencies]

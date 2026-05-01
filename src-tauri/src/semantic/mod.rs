@@ -1,4 +1,5 @@
 pub mod chunker;
+pub mod index;
 pub mod model;
 pub mod status;
 
