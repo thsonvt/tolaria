@@ -21,6 +21,7 @@ mod pi_config;
 mod pi_discovery;
 mod pi_events;
 pub mod search;
+pub mod semantic;
 pub mod settings;
 pub mod telemetry;
 pub mod vault;
