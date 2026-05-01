@@ -97,6 +97,7 @@ export interface Settings {
   initial_h1_auto_rename_enabled?: boolean | null
   default_ai_agent?: AiAgentId | null
   hide_gitignored_files?: boolean | null
+  semantic_search_enabled?: boolean | null
 }
 
 export interface GitPullResult {

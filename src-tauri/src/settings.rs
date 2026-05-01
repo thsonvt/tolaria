@@ -24,6 +24,7 @@ pub struct Settings {
     pub initial_h1_auto_rename_enabled: Option<bool>,
     pub default_ai_agent: Option<String>,
     pub hide_gitignored_files: Option<bool>,
+    pub semantic_search_enabled: Option<bool>,
 }
 
 fn normalize_optional_string(value: Option<String>) -> Option<String> {
@@ -126,6 +127,7 @@ fn normalize_settings(settings: Settings) -> Settings {
         initial_h1_auto_rename_enabled: settings.initial_h1_auto_rename_enabled,
         default_ai_agent: normalize_default_ai_agent(settings.default_ai_agent.as_deref()),
         hide_gitignored_files: settings.hide_gitignored_files,
+        semantic_search_enabled: settings.semantic_search_enabled,
     }
 }
 
@@ -252,6 +254,35 @@ mod tests {
     }
 
     #[test]
+    fn test_semantic_search_enabled_defaults_to_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+
+        let loaded = get_settings_at(&path).unwrap();
+
+        assert_eq!(loaded.semantic_search_enabled, None);
+    }
+
+    #[test]
+    fn test_save_settings_preserves_semantic_search_enabled() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+
+        save_settings_at(
+            &path,
+            Settings {
+                semantic_search_enabled: Some(true),
+                ..Settings::default()
+            },
+        )
+        .unwrap();
+
+        let loaded = get_settings_at(&path).unwrap();
+
+        assert_eq!(loaded.semantic_search_enabled, Some(true));
+    }
+
+    #[test]
     fn test_settings_json_roundtrip() {
         let settings = Settings {
             auto_pull_interval_minutes: Some(10),
@@ -269,6 +300,7 @@ mod tests {
             initial_h1_auto_rename_enabled: Some(false),
             default_ai_agent: Some("codex".to_string()),
             hide_gitignored_files: Some(false),
+            semantic_search_enabled: Some(true),
         };
         let json = serde_json::to_string(&settings).unwrap();
         let parsed: Settings = serde_json::from_str(&json).unwrap();
