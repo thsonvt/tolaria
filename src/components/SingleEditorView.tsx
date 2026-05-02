@@ -27,6 +27,12 @@ import { attachClickHandlers, enrichSuggestionItems } from '../utils/suggestionE
 import { openExternalUrl } from '../utils/url'
 import { observeNativeTextAssistanceDisabled } from '../lib/nativeTextAssistance'
 import { getRuntimeStyleNonce } from '../lib/runtimeStyleNonce'
+import {
+  HIGHLIGHT_JUMP_EVENT,
+  HIGHLIGHT_PULSE_CLASS,
+  type HighlightJumpEventDetail,
+  normalizeHighlightText,
+} from '../utils/highlightMarkdown'
 import { WikilinkSuggestionMenu, type WikilinkSuggestionItem } from './WikilinkSuggestionMenu'
 import type { VaultEntry } from '../types'
 import { _wikilinkEntriesRef } from './editorSchema'
@@ -523,6 +529,65 @@ function useEditorHighlightShortcut(options: {
   }, [containerRef, editable, editor])
 }
 
+function useHighlightJumpListener(options: {
+  activeNotePath?: string
+  containerRef: React.RefObject<HTMLDivElement | null>
+}) {
+  const { activeNotePath, containerRef } = options
+  const pulseTimeoutRef = useRef<number | null>(null)
+  const pulsingElementRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (pulseTimeoutRef.current !== null) {
+        window.clearTimeout(pulseTimeoutRef.current)
+      }
+      pulsingElementRef.current?.classList.remove(HIGHLIGHT_PULSE_CLASS)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!activeNotePath) return
+
+    const handleJump = (event: Event) => {
+      const detail = (event as CustomEvent<HighlightJumpEventDetail>).detail
+      const highlight = detail?.highlight
+      if (!highlight || highlight.notePath !== activeNotePath) return
+
+      const container = containerRef.current
+      if (!container) return
+
+      const targetExcerpt = normalizeHighlightText(highlight.excerpt)
+      if (!targetExcerpt) return
+
+      const target = Array.from(container.querySelectorAll<HTMLElement>('.tolaria-highlight'))
+        .find((element) => normalizeHighlightText(element.textContent ?? '') === targetExcerpt)
+      if (!target) return
+
+      if (pulseTimeoutRef.current !== null) {
+        window.clearTimeout(pulseTimeoutRef.current)
+      }
+      pulsingElementRef.current?.classList.remove(HIGHLIGHT_PULSE_CLASS)
+
+      target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      target.classList.add(HIGHLIGHT_PULSE_CLASS)
+      pulsingElementRef.current = target
+      pulseTimeoutRef.current = window.setTimeout(() => {
+        target.classList.remove(HIGHLIGHT_PULSE_CLASS)
+        if (pulsingElementRef.current === target) {
+          pulsingElementRef.current = null
+        }
+        pulseTimeoutRef.current = null
+      }, 1400)
+    }
+
+    window.addEventListener(HIGHLIGHT_JUMP_EVENT, handleJump)
+    return () => {
+      window.removeEventListener(HIGHLIGHT_JUMP_EVENT, handleJump)
+    }
+  }, [activeNotePath, containerRef])
+}
+
 function handleCodeBlockCopy(event: React.ClipboardEvent<HTMLDivElement>) {
   const codeText = selectedCodeBlockText({
     selection: window.getSelection(),
@@ -632,9 +697,10 @@ function useInsertImageCallback(editor: ReturnType<typeof useCreateBlockNote>) {
 }
 
 /** Single BlockNote editor view — content is swapped via replaceBlocks */
-export function SingleEditorView({ editor, entries, onNavigateWikilink, onChange, vaultPath, editable = true }: {
+export function SingleEditorView({ editor, entries, activeNotePath, onNavigateWikilink, onChange, vaultPath, editable = true }: {
   editor: ReturnType<typeof useCreateBlockNote>
   entries: VaultEntry[]
+  activeNotePath?: string
   onNavigateWikilink: (target: string) => void
   onChange?: () => void
   vaultPath?: string
@@ -650,6 +716,7 @@ export function SingleEditorView({ editor, entries, onNavigateWikilink, onChange
   useBlockNoteSideMenuHoverGuard(containerRef)
   useEditorLinkActivation(containerRef, onNavigateWikilink)
   useEditorHighlightShortcut({ containerRef, editable, editor })
+  useHighlightJumpListener({ activeNotePath, containerRef })
 
   useEffect(() => {
     _wikilinkEntriesRef.current = entries

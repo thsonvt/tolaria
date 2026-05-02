@@ -193,6 +193,7 @@ function EditorCanvas({
   cssVars,
   editor,
   entries,
+  activeTab,
   onNavigateWikilink,
   onEditorChange,
   isDeletedPreview,
@@ -203,6 +204,7 @@ function EditorCanvas({
   | 'cssVars'
   | 'editor'
   | 'entries'
+  | 'activeTab'
   | 'onNavigateWikilink'
   | 'onEditorChange'
   | 'isDeletedPreview'
@@ -216,6 +218,7 @@ function EditorCanvas({
         <SingleEditorView
           editor={editor}
           entries={entries}
+          activeNotePath={activeTab?.entry.path}
           onNavigateWikilink={onNavigateWikilink}
           onChange={onEditorChange}
           vaultPath={vaultPath}

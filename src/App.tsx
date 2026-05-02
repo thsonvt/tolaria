@@ -74,6 +74,7 @@ import { useAppSave } from './hooks/useAppSave'
 import { useNoteRetargetingUi } from './hooks/useNoteRetargetingUi'
 import { useVaultBridge } from './hooks/useVaultBridge'
 import { useSavedViewOrdering } from './hooks/useSavedViewOrdering'
+import { useHighlightsIndex } from './hooks/useHighlightsIndex'
 import { createViewFilename } from './utils/viewFilename'
 import { nextViewOrder } from './utils/viewOrdering'
 import type { CommitDiffRequest } from './hooks/useDiffMode'
@@ -124,6 +125,11 @@ import {
   isExplicitOrganizationEnabled,
   sanitizeSelectionForOrganization,
 } from './utils/organizationWorkflow'
+import {
+  HIGHLIGHT_JUMP_EVENT,
+  type HighlightJumpEventDetail,
+  type HighlightExcerpt,
+} from './utils/highlightMarkdown'
 import './App.css'
 
 // Type declarations for mock content storage and test overrides
@@ -1506,7 +1512,43 @@ function App() {
     () => Object.fromEntries(notes.tabs.map((tab) => [tab.entry.path, tab.content])),
     [notes.tabs],
   )
-  const handleOpenHighlight = useCallback(() => {}, [])
+  const isHighlightsView = effectiveSelection.kind === 'filter' && effectiveSelection.filter === 'highlights'
+  const highlightsIndex = useHighlightsIndex({
+    entries: vault.entries,
+    enabled: isHighlightsView,
+    vaultPath: resolvedPath,
+    openTabContentByPath,
+  })
+  const [pendingHighlightJump, setPendingHighlightJump] = useState<HighlightExcerpt | null>(null)
+
+  useEffect(() => {
+    if (!pendingHighlightJump || activeTab?.entry.path !== pendingHighlightJump.notePath) return
+
+    const highlight = pendingHighlightJump
+    const frame = requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent<HighlightJumpEventDetail>(HIGHLIGHT_JUMP_EVENT, {
+        detail: { highlight },
+      }))
+      setPendingHighlightJump((current) => current?.id === highlight.id ? null : current)
+    })
+
+    return () => cancelAnimationFrame(frame)
+  }, [activeTab, pendingHighlightJump])
+
+  const handleOpenHighlight = useCallback(async (highlight: HighlightExcerpt) => {
+    const entry = vault.entries.find((candidate) => candidate.path === highlight.notePath)
+    if (!entry) {
+      const label = highlight.noteTitle.trim() || highlight.notePath.split('/').pop() || highlight.notePath
+      setToastMessage(`"${label}" could not be opened because its file is missing or moved.`)
+      return
+    }
+
+    setPendingHighlightJump(highlight)
+    await notes.handleReplaceActiveTab(entry)
+    if (notes.activeTabPathRef.current !== highlight.notePath) {
+      setPendingHighlightJump((current) => current?.id === highlight.id ? null : current)
+    }
+  }, [notes, vault.entries])
 
   const inboxCount = useMemo(() => filterInboxEntries(vault.entries, inboxPeriod).length, [vault.entries, inboxPeriod])
 
@@ -1598,7 +1640,7 @@ function App() {
           {sidebarVisible && (
             <>
               <div className="app__sidebar" style={{ width: layout.sidebarWidth }}>
-                <Sidebar entries={vault.entries} folders={vault.folders} views={vault.views} selection={effectiveSelection} onSelect={handleSetSelection} onSelectNote={notes.handleSelectNote} onSelectFavorite={handleOpenFavorite} onReorderFavorites={entryActions.handleReorderFavorites} onCreateType={notes.handleCreateNoteImmediate} onCreateNewType={dialogs.openCreateType} onCustomizeType={entryActions.handleCustomizeType} onUpdateTypeTemplate={entryActions.handleUpdateTypeTemplate} onReorderSections={entryActions.handleReorderSections} onRenameSection={entryActions.handleRenameSection} onToggleTypeVisibility={entryActions.handleToggleTypeVisibility} onCreateFolder={handleCreateFolder} onRenameFolder={folderActions.renameFolder} onDeleteFolder={folderActions.requestDeleteFolder} folderFileActions={fileActions.folderActions} renamingFolderPath={folderActions.renamingFolderPath} onStartRenameFolder={folderActions.startFolderRename} onCancelRenameFolder={folderActions.cancelFolderRename} onCreateView={dialogs.openCreateView} onEditView={handleEditView} onDeleteView={handleDeleteView} onReorderViews={viewOrdering.onReorderViews} onMoveView={viewOrdering.onMoveView} showInbox={explicitOrganizationEnabled} inboxCount={inboxCount} highlightCount={0} locale={appLocale} />
+                <Sidebar entries={vault.entries} folders={vault.folders} views={vault.views} selection={effectiveSelection} onSelect={handleSetSelection} onSelectNote={notes.handleSelectNote} onSelectFavorite={handleOpenFavorite} onReorderFavorites={entryActions.handleReorderFavorites} onCreateType={notes.handleCreateNoteImmediate} onCreateNewType={dialogs.openCreateType} onCustomizeType={entryActions.handleCustomizeType} onUpdateTypeTemplate={entryActions.handleUpdateTypeTemplate} onReorderSections={entryActions.handleReorderSections} onRenameSection={entryActions.handleRenameSection} onToggleTypeVisibility={entryActions.handleToggleTypeVisibility} onCreateFolder={handleCreateFolder} onRenameFolder={folderActions.renameFolder} onDeleteFolder={folderActions.requestDeleteFolder} folderFileActions={fileActions.folderActions} renamingFolderPath={folderActions.renamingFolderPath} onStartRenameFolder={folderActions.startFolderRename} onCancelRenameFolder={folderActions.cancelFolderRename} onCreateView={dialogs.openCreateView} onEditView={handleEditView} onDeleteView={handleDeleteView} onReorderViews={viewOrdering.onReorderViews} onMoveView={viewOrdering.onMoveView} showInbox={explicitOrganizationEnabled} inboxCount={inboxCount} highlightCount={highlightsIndex.highlights.length} locale={appLocale} />
               </div>
               <ResizeHandle onResize={layout.handleSidebarResize} />
             </>
@@ -1609,7 +1651,7 @@ function App() {
                 {effectiveSelection.kind === 'filter' && effectiveSelection.filter === 'pulse' ? (
                   <PulseView vaultPath={resolvedPath} onOpenNote={handlePulseOpenNote} sidebarCollapsed={!sidebarVisible} onExpandSidebar={() => handleSetViewMode('all')} locale={appLocale} />
                 ) : (
-                  <NoteList entries={vault.entries} selection={effectiveSelection} selectedNote={activeTab?.entry ?? null} noteListFilter={noteListFilter} onNoteListFilterChange={setNoteListFilter} inboxPeriod={inboxPeriod} modifiedFiles={vault.modifiedFiles} modifiedFilesError={vault.modifiedFilesError} getNoteStatus={vault.getNoteStatus} sidebarCollapsed={!sidebarVisible} onSelectNote={notes.handleSelectNote} onReplaceActiveTab={handleReplaceActiveTabWithQueuedDiff} onEnterNeighborhood={handleEnterNeighborhood} onCreateNote={notes.handleCreateNoteImmediate} onBulkOrganize={explicitOrganizationEnabled ? bulkActions.handleBulkOrganize : undefined} onBulkArchive={bulkActions.handleBulkArchive} onBulkDeletePermanently={deleteActions.handleBulkDeletePermanently} onUpdateTypeSort={notes.handleUpdateFrontmatter} onUpdateViewDefinition={handleUpdateViewDefinition} updateEntry={vault.updateEntry} onOpenInNewWindow={handleOpenEntryInNewWindow} onDiscardFile={handleDiscardFile} onOpenDeletedNote={handleOpenDeletedNote} allNotesNoteListProperties={vaultConfig.allNotes?.noteListProperties ?? null} onUpdateAllNotesNoteListProperties={handleUpdateAllNotesNoteListProperties} inboxNoteListProperties={vaultConfig.inbox?.noteListProperties ?? null} onUpdateInboxNoteListProperties={handleUpdateInboxNoteListProperties} views={vault.views} visibleNotesRef={visibleNotesRef} vaultPath={resolvedPath} openTabContentByPath={openTabContentByPath} onOpenHighlight={handleOpenHighlight} multiSelectionCommandRef={multiSelectionCommandRef} locale={appLocale} />
+                  <NoteList entries={vault.entries} selection={effectiveSelection} selectedNote={activeTab?.entry ?? null} noteListFilter={noteListFilter} onNoteListFilterChange={setNoteListFilter} inboxPeriod={inboxPeriod} modifiedFiles={vault.modifiedFiles} modifiedFilesError={vault.modifiedFilesError} getNoteStatus={vault.getNoteStatus} sidebarCollapsed={!sidebarVisible} onSelectNote={notes.handleSelectNote} onReplaceActiveTab={handleReplaceActiveTabWithQueuedDiff} onEnterNeighborhood={handleEnterNeighborhood} onCreateNote={notes.handleCreateNoteImmediate} onBulkOrganize={explicitOrganizationEnabled ? bulkActions.handleBulkOrganize : undefined} onBulkArchive={bulkActions.handleBulkArchive} onBulkDeletePermanently={deleteActions.handleBulkDeletePermanently} onUpdateTypeSort={notes.handleUpdateFrontmatter} onUpdateViewDefinition={handleUpdateViewDefinition} updateEntry={vault.updateEntry} onOpenInNewWindow={handleOpenEntryInNewWindow} onDiscardFile={handleDiscardFile} onOpenDeletedNote={handleOpenDeletedNote} allNotesNoteListProperties={vaultConfig.allNotes?.noteListProperties ?? null} onUpdateAllNotesNoteListProperties={handleUpdateAllNotesNoteListProperties} inboxNoteListProperties={vaultConfig.inbox?.noteListProperties ?? null} onUpdateInboxNoteListProperties={handleUpdateInboxNoteListProperties} views={vault.views} visibleNotesRef={visibleNotesRef} highlightGroups={highlightsIndex.groups} highlightLoading={highlightsIndex.loading} highlightError={highlightsIndex.error} onOpenHighlight={handleOpenHighlight} multiSelectionCommandRef={multiSelectionCommandRef} locale={appLocale} />
                 )}
               </div>
               <ResizeHandle onResize={layout.handleNoteListResize} />

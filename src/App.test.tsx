@@ -5,6 +5,7 @@ import { DEFAULT_VAULTS } from './hooks/useVaultSwitcher'
 import { formatShortcutDisplay } from './hooks/appCommandCatalog'
 import { invoke } from '@tauri-apps/api/core'
 import type { Settings, ViewDefinition, ViewFile } from './types'
+import { HIGHLIGHT_JUMP_EVENT } from './utils/highlightMarkdown'
 
 // Provide a localStorage mock that supports all methods (jsdom's may be incomplete)
 const localStorageMock = (() => {
@@ -354,8 +355,10 @@ vi.mock('./hooks/useUpdater', async () => {
 vi.mock('@blocknote/core', () => ({
   BlockNoteSchema: { create: () => ({ extend: () => ({}) }) },
   createCodeBlockSpec: vi.fn(() => ({})),
+  createStyleSpec: vi.fn(() => ({})),
   createExtension: (factory: unknown) => () => factory,
   defaultInlineContentSpecs: {},
+  defaultStyleSpecs: {},
   filterSuggestionItems: vi.fn(() => []),
 }))
 
@@ -1126,6 +1129,54 @@ describe('App', () => {
     // The status bar element should exist in the DOM
     const appShell = document.querySelector('.app-shell')
     expect(appShell).toBeInTheDocument()
+  })
+
+  it('indexes highlights from app state and opens the selected highlight note', async () => {
+    const highlightContent: Record<string, string> = {
+      '/vault/project/test.md': '# Test Project\n\n==first passage==',
+      '/vault/topic/dev.md': '# Software Development\n\nNo highlights here.',
+    }
+    const seenEvents: Array<{ notePath: string; excerpt: string }> = []
+    const handleJump = (event: Event) => {
+      const detail = (event as CustomEvent<{ highlight?: { notePath: string; excerpt: string } }>).detail
+      if (detail?.highlight) {
+        seenEvents.push(detail.highlight)
+      }
+    }
+    mockCommandResults.get_note_content = ({ path }: { path: string }) => highlightContent[path] ?? ''
+    window.addEventListener(HIGHLIGHT_JUMP_EVENT, handleJump)
+
+    render(<App />)
+
+    await waitFor(() => {
+      expect(screen.getByText('All Notes')).toBeInTheDocument()
+    })
+
+    await act(async () => {
+      fireEvent.click(within(screen.getByTestId('sidebar-top-nav')).getByText('Highlights'))
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(within(screen.getByTestId('sidebar-top-nav')).getByText('1')).toBeInTheDocument()
+    })
+
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: /first passage/i }))
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(window.__laputaTest?.activeTabPath).toBe('/vault/project/test.md')
+    })
+    await waitFor(() => {
+      expect(seenEvents).toContainEqual(expect.objectContaining({
+        notePath: '/vault/project/test.md',
+        excerpt: 'first passage',
+      }))
+    })
+
+    window.removeEventListener(HIGHLIGHT_JUMP_EVENT, handleJump)
   })
 
   it('switches vaults from the bottom bar after onboarding is ready', async () => {

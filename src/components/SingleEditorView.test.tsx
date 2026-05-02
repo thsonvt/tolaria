@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
 import type { VaultEntry } from '../types'
 import { RUNTIME_STYLE_NONCE } from '../lib/runtimeStyleNonce'
+import {
+  HIGHLIGHT_JUMP_EVENT,
+  HIGHLIGHT_PULSE_CLASS,
+} from '../utils/highlightMarkdown'
 
 const state = vi.hoisted(() => ({
   capturedLinkToolbarProps: null as null | Record<string, unknown>,
@@ -263,12 +267,16 @@ function createEditor() {
   }
 }
 
-function renderEditorHarness(editor = createEditor()) {
+function renderEditorHarness(
+  editor = createEditor(),
+  options: { activeNotePath?: string } = {},
+) {
   render(
     <SingleEditorView
       editor={editor as never}
       entries={[makeEntry()]}
       onNavigateWikilink={vi.fn()}
+      activeNotePath={options.activeNotePath}
     />,
   )
 
@@ -821,5 +829,52 @@ describe('SingleEditorView', () => {
     expect(event.defaultPrevented).toBe(false)
     expect(editor.focus).not.toHaveBeenCalled()
     expect(editor.toggleStyles).not.toHaveBeenCalled()
+  })
+
+  it('scrolls to and pulses the matching highlight for the active note path', () => {
+    vi.useFakeTimers()
+
+    const { container } = renderEditorHarness(createEditor(), {
+      activeNotePath: '/vault/project/alpha.md',
+    })
+    const otherMark = document.createElement('mark')
+    otherMark.className = 'tolaria-highlight'
+    otherMark.textContent = 'other excerpt'
+    otherMark.scrollIntoView = vi.fn()
+
+    const targetMark = document.createElement('mark')
+    targetMark.className = 'tolaria-highlight'
+    targetMark.textContent = '  target\nexcerpt  '
+    targetMark.scrollIntoView = vi.fn()
+
+    container.append(otherMark, targetMark)
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(HIGHLIGHT_JUMP_EVENT, {
+        detail: {
+          highlight: {
+            id: 'h1',
+            notePath: '/vault/project/alpha.md',
+            noteTitle: 'Alpha',
+            excerpt: 'target excerpt',
+            startOffset: 0,
+            endOffset: 10,
+          },
+        },
+      }))
+    })
+
+    expect(otherMark.scrollIntoView).not.toHaveBeenCalled()
+    expect(targetMark.scrollIntoView).toHaveBeenCalledWith({
+      block: 'center',
+      behavior: 'smooth',
+    })
+    expect(targetMark).toHaveClass(HIGHLIGHT_PULSE_CLASS)
+
+    act(() => {
+      vi.advanceTimersByTime(1500)
+    })
+
+    expect(targetMark).not.toHaveClass(HIGHLIGHT_PULSE_CLASS)
   })
 })

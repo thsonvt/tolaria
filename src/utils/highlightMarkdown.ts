@@ -23,6 +23,10 @@ export interface HighlightGroup {
   highlights: HighlightExcerpt[]
 }
 
+export interface HighlightJumpEventDetail {
+  highlight: HighlightExcerpt
+}
+
 type InlineItem = {
   type: string
   text?: string
@@ -77,7 +81,7 @@ function isClosingBoundaryEquals(markdown: string, index: number): boolean {
     && markdown[index - 1] !== '='
 }
 
-function normalizeExcerpt(text: string): string {
+export function normalizeHighlightText(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
 }
 
@@ -183,7 +187,7 @@ export function parseMarkdownHighlights(options: {
     }
 
     const openOffset = index
-    const excerpt = normalizeExcerpt(highlight.rawText)
+    const excerpt = normalizeHighlightText(highlight.rawText)
     if (excerpt.length > 0) {
       const endOffset = highlight.closeOffset + 2
       highlights.push({
@@ -329,7 +333,7 @@ export function preProcessHighlightMarkdown(markdown: string): string {
 
       const highlight = readBalancedHighlight(line, index)
       if (highlight) {
-        if (normalizeExcerpt(highlight.rawText).length === 0) {
+        if (normalizeHighlightText(highlight.rawText).length === 0) {
           processed += line.slice(index, highlight.closeOffset + 2)
         } else {
           processed += `${HIGHLIGHT_OPEN_SENTINEL}${highlight.rawText}${HIGHLIGHT_CLOSE_SENTINEL}`
