@@ -398,6 +398,10 @@ Search is keyword-based, using `walkdir` to scan all `.md` files in the vault di
 
 The `search_vault` Tauri command runs the scan in a blocking Tokio task and returns results sorted by relevance score.
 
+### Persistent Highlights
+
+Highlights are stored inline in Markdown as `==highlighted text==`. The editor renders them through a BlockNote `highlight` style, but save and raw-mode sync restore the style back to Markdown before content leaves the editor. The Highlights sidebar collection derives its grouped index from note content at runtime, so there is no sidecar highlight database to merge or migrate.
+
 ## Vault Cache System
 
 The vault cache (`src-tauri/src/vault/cache.rs`) accelerates vault scanning using git-based incremental updates.

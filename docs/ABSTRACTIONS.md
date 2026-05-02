@@ -553,6 +553,10 @@ Defined in `src/components/tolariaEditorFormatting.tsx` and `src/components/tola
 - `useTauriDragDropEvent()` owns the shared Tauri window drag/drop subscription and duplicate-unlisten cleanup used by native drop features.
 - `useNativePathDrop()` is the shared Tauri file/folder-drop abstraction for text inputs that need filesystem paths instead of attachment import. It consumes native window drag/drop events, gates them to the target element bounds or focused text selection, and lets AI composer / command-palette inputs insert formatted paths at the current cursor.
 
+### Highlight Markdown Utilities
+
+`src/utils/highlightMarkdown.ts` owns the portable highlight contract. It parses balanced `==...==` spans, creates deterministic runtime IDs, groups/filter excerpts for the sidebar collection, and translates between Markdown syntax and the BlockNote `highlight` style. Callers should not persist highlight IDs because they are derived from note path, offsets, and excerpt content.
+
 ### Markdown-to-BlockNote Pipeline
 
 ```mermaid
