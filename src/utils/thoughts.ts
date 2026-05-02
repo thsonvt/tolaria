@@ -98,6 +98,16 @@ function hasKnownSnakeCaseAnchorKeys(value: Record<string, unknown>): boolean {
   ].some((key) => hasOwnKey(value, key))
 }
 
+function hasSelectionOnlyCamelCaseAnchorKeys(value: Record<string, unknown>): boolean {
+  return [
+    'quote',
+    'prefix',
+    'suffix',
+    'startOffset',
+    'endOffset',
+  ].some((key) => hasOwnKey(value, key))
+}
+
 function normalizeMarkdownWithIndexMap(markdown: string): {
   normalized: string
   rawStarts: number[]
@@ -154,11 +164,32 @@ function findRawSelectionOffsets(markdown: string, quote: string): {
   }
 }
 
+function buildSelectionMatches(markdown: string, quote: string): ThoughtAnchorMatch[] {
+  if (!quote) return []
+
+  const normalizedMarkdown = normalizeMarkdownWithIndexMap(markdown)
+  const matches: ThoughtAnchorMatch[] = []
+  let normalizedStart = normalizedMarkdown.normalized.indexOf(quote)
+
+  while (normalizedStart >= 0) {
+    const normalizedEnd = normalizedStart + quote.length - 1
+    matches.push({
+      quote,
+      startOffset: normalizedMarkdown.rawStarts[normalizedStart],
+      endOffset: normalizedMarkdown.rawEnds[normalizedEnd],
+    })
+    normalizedStart = normalizedMarkdown.normalized.indexOf(quote, normalizedStart + 1)
+  }
+
+  return matches
+}
+
 function normalizeThoughtAnchor(value: unknown): ThoughtAnchor | null {
   if (!isObject(value) || typeof value.type !== 'string') return null
   if (hasKnownSnakeCaseAnchorKeys(value)) return null
 
   if (value.type === 'article') {
+    if (hasSelectionOnlyCamelCaseAnchorKeys(value)) return null
     return { type: 'article' }
   }
 
@@ -312,6 +343,17 @@ export function filterThoughtGroups(groups: ThoughtGroup[], query: string): Thou
 
 export function createSelectionThoughtDraft(options: SelectionThoughtDraftOptions): ThoughtRecord {
   const quote = normalizeWhitespace(options.selectedText)
+  if (!quote) {
+    return buildThoughtRecord({
+      id: options.id,
+      notePath: options.notePath,
+      noteTitle: options.noteTitle,
+      anchor: { type: 'article' },
+      bodyMarkdown: options.bodyMarkdown,
+      now: options.now,
+    })
+  }
+
   const matchedOffsets = findRawSelectionOffsets(options.markdown, quote)
   const startOffset = matchedOffsets?.startOffset ?? 0
   const endOffset = matchedOffsets?.endOffset ?? quote.length
@@ -353,7 +395,7 @@ export function matchThoughtAnchor(anchor: ThoughtAnchor, markdown: string): Tho
     }
   }
 
-  if (markdown.slice(anchor.startOffset, anchor.endOffset) === anchor.quote) {
+  if (normalizeWhitespace(markdown.slice(anchor.startOffset, anchor.endOffset)) === anchor.quote) {
     return {
       quote: anchor.quote,
       startOffset: anchor.startOffset,
@@ -361,18 +403,7 @@ export function matchThoughtAnchor(anchor: ThoughtAnchor, markdown: string): Tho
     }
   }
 
-  const matches: ThoughtAnchorMatch[] = []
-  let startOffset = markdown.indexOf(anchor.quote)
-
-  while (startOffset >= 0) {
-    matches.push({
-      quote: anchor.quote,
-      startOffset,
-      endOffset: startOffset + anchor.quote.length,
-    })
-    startOffset = markdown.indexOf(anchor.quote, startOffset + 1)
-  }
-
+  const matches = buildSelectionMatches(markdown, anchor.quote)
   if (matches.length === 0) return null
   return matches.sort((left, right) => {
     const leftScore = selectionContextScore(markdown, left.startOffset, left.endOffset, anchor)

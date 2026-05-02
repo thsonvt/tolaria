@@ -83,6 +83,13 @@ describe('normalizeThoughtRecord', () => {
         start_offset: baseThought.anchor.type === 'selection' ? baseThought.anchor.startOffset : 0,
       },
     })).toBeNull()
+    expect(normalizeThoughtRecord({
+      ...baseThought,
+      anchor: {
+        type: 'article',
+        quote: 'should not exist',
+      },
+    })).toBeNull()
   })
 })
 
@@ -184,6 +191,25 @@ describe('anchor drafts and matching', () => {
     })
   })
 
+  it('returns an article anchor when the normalized selection is whitespace only', () => {
+    const draft = createSelectionThoughtDraft({
+      notePath: baseThought.notePath,
+      noteTitle: baseThought.noteTitle,
+      bodyMarkdown: 'Draft body',
+      selectedText: ' \n\t  ',
+      markdown,
+      now: '2026-05-03T08:00:00.000Z',
+      id: 'thought-empty-selection',
+    })
+
+    expect(draft).toMatchObject({
+      id: 'thought-empty-selection',
+      anchor: { type: 'article' },
+      createdAt: '2026-05-03T08:00:00.000Z',
+      updatedAt: '2026-05-03T08:00:00.000Z',
+    })
+  })
+
   it('finds the real raw span when the selected quote crosses hard wraps in markdown', () => {
     const wrappedMarkdown = [
       '# Wrapped',
@@ -218,6 +244,12 @@ describe('anchor drafts and matching', () => {
       expect(draft.anchor.prefix).toContain('few-shot examples is always token space.')
       expect(draft.anchor.suffix).toContain('with information retrieval.')
     }
+
+    expect(matchThoughtAnchor(draft.anchor, wrappedMarkdown)).toMatchObject({
+      quote: selectedText,
+      startOffset: rawStartOffset,
+      endOffset: rawEndOffset,
+    })
   })
 
   it('creates article anchors when no text is selected', () => {
