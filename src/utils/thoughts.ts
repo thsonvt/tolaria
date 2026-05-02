@@ -197,6 +197,7 @@ function normalizeThoughtAnchor(value: unknown): ThoughtAnchor | null {
   if (!isNonEmptyString(value.quote)) return null
   if (typeof value.prefix !== 'string' || typeof value.suffix !== 'string') return null
   if (!isFiniteNumber(value.startOffset) || !isFiniteNumber(value.endOffset)) return null
+  if (value.startOffset < 0 || value.endOffset < 0) return null
   if (value.endOffset <= value.startOffset) return null
 
   return {

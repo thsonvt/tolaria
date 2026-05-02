@@ -53,7 +53,15 @@ describe('normalizeThoughtRecord', () => {
     })).toBeNull()
     expect(normalizeThoughtRecord({
       ...baseThought,
+      anchor: { ...baseThought.anchor, startOffset: -1 },
+    })).toBeNull()
+    expect(normalizeThoughtRecord({
+      ...baseThought,
       anchor: { ...baseThought.anchor, endOffset: Number.POSITIVE_INFINITY },
+    })).toBeNull()
+    expect(normalizeThoughtRecord({
+      ...baseThought,
+      anchor: { ...baseThought.anchor, endOffset: -1 },
     })).toBeNull()
     expect(normalizeThoughtRecord({
       ...baseThought,
@@ -376,6 +384,30 @@ describe('anchor drafts and matching', () => {
     }, equalScoreMarkdown)).toMatchObject({
       startOffset: laterStartOffset,
       endOffset: laterStartOffset + quote.length,
+    })
+  })
+
+  it('breaks fully tied matches by choosing the earliest candidate', () => {
+    const quote = 'anchor quote'
+    const tieMarkdown = [
+      'First anchor quote here.',
+      'Spacer line.',
+      'Second anchor quote here.',
+    ].join('\n')
+    const firstStartOffset = tieMarkdown.indexOf(quote)
+    const secondStartOffset = tieMarkdown.lastIndexOf(quote)
+    const midpointStartOffset = Math.floor((firstStartOffset + secondStartOffset) / 2)
+
+    expect(matchThoughtAnchor({
+      type: 'selection',
+      quote,
+      prefix: 'missing prefix',
+      suffix: 'missing suffix',
+      startOffset: midpointStartOffset,
+      endOffset: midpointStartOffset + quote.length,
+    }, tieMarkdown)).toMatchObject({
+      startOffset: firstStartOffset,
+      endOffset: firstStartOffset + quote.length,
     })
   })
 
