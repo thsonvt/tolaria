@@ -74,6 +74,7 @@ interface SettingsDraft {
   uiLanguage: UiLanguagePreference
   initialH1AutoRename: boolean
   hideGitignoredFiles: boolean
+  semanticSearchEnabled: boolean
   crashReporting: boolean
   analytics: boolean
   explicitOrganization: boolean
@@ -107,6 +108,8 @@ interface SettingsBodyProps {
   setInitialH1AutoRename: (value: boolean) => void
   hideGitignoredFiles: boolean
   setHideGitignoredFiles: (value: boolean) => void
+  semanticSearchEnabled: boolean
+  setSemanticSearchEnabled: (value: boolean) => void
   explicitOrganization: boolean
   setExplicitOrganization: (value: boolean) => void
   crashReporting: boolean
@@ -146,6 +149,7 @@ function createSettingsDraft(
     uiLanguage: settings.ui_language ?? SYSTEM_UI_LANGUAGE,
     initialH1AutoRename: settings.initial_h1_auto_rename_enabled ?? true,
     hideGitignoredFiles: shouldHideGitignoredFiles(settings),
+    semanticSearchEnabled: settings.semantic_search_enabled ?? false,
     crashReporting: settings.crash_reporting_enabled ?? false,
     analytics: settings.analytics_enabled ?? false,
     explicitOrganization: explicitOrganizationEnabled,
@@ -188,6 +192,7 @@ function buildSettingsFromDraft(settings: Settings, draft: SettingsDraft): Setti
     initial_h1_auto_rename_enabled: draft.initialH1AutoRename,
     default_ai_agent: draft.defaultAiAgent,
     hide_gitignored_files: draft.hideGitignoredFiles,
+    semantic_search_enabled: draft.semanticSearchEnabled,
   }
 }
 
@@ -364,6 +369,8 @@ function SettingsPanelInner({
           setInitialH1AutoRename={(value) => updateDraft('initialH1AutoRename', value)}
           hideGitignoredFiles={draft.hideGitignoredFiles}
           setHideGitignoredFiles={handleGitignoredVisibilityChange}
+          semanticSearchEnabled={draft.semanticSearchEnabled}
+          setSemanticSearchEnabled={(value) => updateDraft('semanticSearchEnabled', value)}
           explicitOrganization={draft.explicitOrganization}
           setExplicitOrganization={(value) => updateDraft('explicitOrganization', value)}
           crashReporting={draft.crashReporting}
@@ -425,6 +432,8 @@ function SettingsBody({
   setInitialH1AutoRename,
   hideGitignoredFiles,
   setHideGitignoredFiles,
+  semanticSearchEnabled,
+  setSemanticSearchEnabled,
   explicitOrganization,
   setExplicitOrganization,
   crashReporting,
@@ -507,6 +516,13 @@ function SettingsBody({
           onChange={setExplicitOrganization}
           autoAdvanceInboxAfterOrganize={autoAdvanceInboxAfterOrganize}
           onChangeAutoAdvanceInboxAfterOrganize={setAutoAdvanceInboxAfterOrganize}
+        />
+      </SettingsSection>
+
+      <SettingsSection>
+        <SearchSettingsSection
+          semanticSearchEnabled={semanticSearchEnabled}
+          setSemanticSearchEnabled={setSemanticSearchEnabled}
         />
       </SettingsSection>
 
@@ -829,6 +845,32 @@ function AiAgentSettingsSection({
       <div style={{ fontSize: 11, color: 'var(--muted-foreground)', lineHeight: 1.5 }}>
         {renderDefaultAiAgentSummary(defaultAiAgent, aiAgentsStatus, t)}
       </div>
+    </>
+  )
+}
+
+function SearchSettingsSection({
+  semanticSearchEnabled,
+  setSemanticSearchEnabled,
+}: Pick<SettingsBodyProps, 'semanticSearchEnabled' | 'setSemanticSearchEnabled'>) {
+  return (
+    <>
+      <SectionHeading
+        title="Search"
+        description="Semantic search uses a local model and only indexes after you enable it."
+      />
+
+      <SettingsSwitchRow
+        label="Enable semantic search"
+        description="Downloads a local embedding model, then indexes Markdown notes on this device."
+        checked={semanticSearchEnabled}
+        onChange={setSemanticSearchEnabled}
+        testId="settings-semantic-search-enabled"
+      />
+
+      <p className="mt-2 text-[11px] text-muted-foreground">
+        Note text and search queries are not sent to a semantic search service.
+      </p>
     </>
   )
 }

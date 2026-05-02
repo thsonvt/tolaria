@@ -347,6 +347,19 @@ describe('SettingsPanel', () => {
     }))
   })
 
+  it('saves semantic search enablement from the Search section', () => {
+    render(
+      <SettingsPanel open={true} settings={emptySettings} onSave={onSave} onClose={onClose} />
+    )
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Enable semantic search' }))
+    fireEvent.click(screen.getByTestId('settings-save'))
+
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      semantic_search_enabled: true,
+    }))
+  })
+
   it('disables AutoGit controls when the current vault is not git-enabled', () => {
     render(
       <SettingsPanel
