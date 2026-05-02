@@ -33,8 +33,32 @@ describe('normalizeThoughtRecord', () => {
 
   it('rejects malformed records', () => {
     expect(normalizeThoughtRecord({ ...baseThought, id: '' })).toBeNull()
+    expect(normalizeThoughtRecord({ ...baseThought, notePath: '' })).toBeNull()
+    expect(normalizeThoughtRecord({ ...baseThought, noteTitle: '' })).toBeNull()
     expect(normalizeThoughtRecord({ ...baseThought, bodyMarkdown: '' })).toBeNull()
+    expect(normalizeThoughtRecord({ ...baseThought, createdAt: '' })).toBeNull()
+    expect(normalizeThoughtRecord({ ...baseThought, updatedAt: '' })).toBeNull()
     expect(normalizeThoughtRecord({ ...baseThought, anchor: { type: 'selection', quote: '' } })).toBeNull()
+    expect(normalizeThoughtRecord({
+      ...baseThought,
+      anchor: { ...baseThought.anchor, prefix: 42 },
+    })).toBeNull()
+    expect(normalizeThoughtRecord({
+      ...baseThought,
+      anchor: { ...baseThought.anchor, suffix: false },
+    })).toBeNull()
+    expect(normalizeThoughtRecord({
+      ...baseThought,
+      anchor: { ...baseThought.anchor, startOffset: Number.NaN },
+    })).toBeNull()
+    expect(normalizeThoughtRecord({
+      ...baseThought,
+      anchor: { ...baseThought.anchor, endOffset: Number.POSITIVE_INFINITY },
+    })).toBeNull()
+    expect(normalizeThoughtRecord({
+      ...baseThought,
+      anchor: { ...baseThought.anchor, endOffset: baseThought.anchor.startOffset },
+    })).toBeNull()
   })
 })
 
@@ -51,9 +75,9 @@ describe('thought grouping and filtering', () => {
   it('filters by thought body, quote, and title', () => {
     const groups = buildThoughtGroups([baseThought], [baseThought.notePath])
 
-    expect(filterThoughtGroups(groups, 'retrieval-quality')).toHaveLength(1)
-    expect(filterThoughtGroups(groups, 'Retrieved documents')).toHaveLength(1)
-    expect(filterThoughtGroups(groups, 'Harness')).toHaveLength(1)
+    expect(filterThoughtGroups(groups, 'RETRIEVAL-QUALITY')).toHaveLength(1)
+    expect(filterThoughtGroups(groups, 'retrieved documents')).toHaveLength(1)
+    expect(filterThoughtGroups(groups, 'harness')).toHaveLength(1)
     expect(filterThoughtGroups(groups, 'not present')).toEqual([])
   })
 })
@@ -84,6 +108,41 @@ describe('anchor drafts and matching', () => {
     })
   })
 
+  it('normalizes selected whitespace and falls back to safe offsets when exact quote is missing', () => {
+    const draft = createSelectionThoughtDraft({
+      notePath: baseThought.notePath,
+      noteTitle: baseThought.noteTitle,
+      bodyMarkdown: 'Draft body',
+      selectedText: '  Retrieved\n\tdocuments   are   where context engineering intersects  ',
+      markdown,
+      now: '2026-05-03T08:00:00.000Z',
+      id: 'thought-fixed',
+    })
+
+    expect(draft.anchor).toMatchObject({
+      type: 'selection',
+      quote: 'Retrieved documents are where context engineering intersects',
+      startOffset: markdown.indexOf('Retrieved documents'),
+    })
+
+    const missingDraft = createSelectionThoughtDraft({
+      notePath: baseThought.notePath,
+      noteTitle: baseThought.noteTitle,
+      bodyMarkdown: 'Draft body',
+      selectedText: 'Missing\n\tselection',
+      markdown,
+      now: '2026-05-03T08:00:00.000Z',
+      id: 'thought-missing',
+    })
+
+    expect(missingDraft.anchor).toMatchObject({
+      type: 'selection',
+      quote: 'Missing selection',
+      startOffset: 0,
+      endOffset: 'Missing selection'.length,
+    })
+  })
+
   it('creates article anchors when no text is selected', () => {
     expect(createArticleThoughtDraft({
       notePath: baseThought.notePath,
@@ -94,6 +153,14 @@ describe('anchor drafts and matching', () => {
     }).anchor).toEqual({ type: 'article' })
   })
 
+  it('matches article anchors at the top of the note', () => {
+    expect(matchThoughtAnchor({ type: 'article' }, markdown)).toEqual({
+      quote: '',
+      startOffset: 0,
+      endOffset: 0,
+    })
+  })
+
   it('matches by stored offsets, then exact quote', () => {
     const offsetMatch = matchThoughtAnchor(baseThought.anchor, markdown)
     expect(offsetMatch?.quote).toBe(baseThought.anchor.type === 'selection' ? baseThought.anchor.quote : '')
@@ -101,6 +168,39 @@ describe('anchor drafts and matching', () => {
     const moved = `${baseThought.anchor.type === 'selection' ? baseThought.anchor.quote : ''}\n\n${markdown}`
     const fallback = matchThoughtAnchor(baseThought.anchor, moved)
     expect(fallback?.startOffset).toBe(0)
+  })
+
+  it('prefers the best prefix and suffix context score across multiple quote matches', () => {
+    const anchor = {
+      type: 'selection' as const,
+      quote: 'anchor quote',
+      prefix: 'Left context: ',
+      suffix: ' [tail]',
+      startOffset: 200,
+      endOffset: 212,
+    }
+
+    const markdownWithBestScore = [
+      'Earlier mismatch anchor quote without context.',
+      'Left context: anchor quote [tail]',
+      'Left context: anchor quote without tail',
+    ].join('\n')
+
+    expect(matchThoughtAnchor(anchor, markdownWithBestScore)).toMatchObject({
+      startOffset: markdownWithBestScore.indexOf('anchor quote', markdownWithBestScore.indexOf('Left context:')),
+      endOffset: markdownWithBestScore.indexOf('anchor quote', markdownWithBestScore.indexOf('Left context:')) + anchor.quote.length,
+    })
+
+    const markdownWithScoreOneWinner = [
+      'anchor quote with no matching context first.',
+      'Partial prefix: anchor quote still wrong.',
+      'Left context: anchor quote and no suffix match here.',
+    ].join('\n')
+
+    expect(matchThoughtAnchor(anchor, markdownWithScoreOneWinner)).toMatchObject({
+      startOffset: markdownWithScoreOneWinner.lastIndexOf(anchor.quote),
+      endOffset: markdownWithScoreOneWinner.lastIndexOf(anchor.quote) + anchor.quote.length,
+    })
   })
 
   it('returns null when a selection anchor cannot be found', () => {

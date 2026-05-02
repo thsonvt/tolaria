@@ -295,16 +295,10 @@ export function matchThoughtAnchor(anchor: ThoughtAnchor, markdown: string): Tho
   }
 
   if (matches.length === 0) return null
-
-  const fullContextMatches = matches.filter((match) => (
-    selectionContextScore(markdown, match.startOffset, match.endOffset, anchor) === 2
-  ))
-  if (fullContextMatches.length === 0) return matches[0]
-
-  return fullContextMatches.sort((left, right) => {
-    const leftDistance = Math.abs(left.startOffset - anchor.startOffset)
-    const rightDistance = Math.abs(right.startOffset - anchor.startOffset)
-    if (leftDistance !== rightDistance) return leftDistance - rightDistance
+  return matches.sort((left, right) => {
+    const leftScore = selectionContextScore(markdown, left.startOffset, left.endOffset, anchor)
+    const rightScore = selectionContextScore(markdown, right.startOffset, right.endOffset, anchor)
+    if (leftScore !== rightScore) return rightScore - leftScore
 
     return left.startOffset - right.startOffset
   })[0]
