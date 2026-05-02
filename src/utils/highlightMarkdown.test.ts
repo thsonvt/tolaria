@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { injectWikilinks, preProcessWikilinks, restoreWikilinksInBlocks } from './wikilinks'
 import {
   HIGHLIGHT_STYLE_KEY,
   buildHighlightGroups,
@@ -12,6 +13,16 @@ import {
 const note = {
   notePath: '/vault/Harness Engineering/agent.md',
   noteTitle: 'Harnessing the harness',
+}
+
+function readHighlightTokens(text: string): { open: string; close: string } {
+  const wrapped = preProcessHighlightMarkdown(text)
+  const excerpt = text.slice(2, -2)
+  const start = wrapped.indexOf(excerpt)
+  return {
+    open: wrapped.slice(0, start),
+    close: wrapped.slice(start + excerpt.length),
+  }
 }
 
 describe('parseMarkdownHighlights', () => {
@@ -148,26 +159,34 @@ describe('restoreHighlightsInBlocks', () => {
 
     expect(restored[0].content).toEqual([
       { type: 'text', text: 'Keep ', styles: {} },
-      { type: 'text', text: '==this passage==', styles: {} },
+      { type: 'text', text: '==', styles: {} },
+      { type: 'text', text: 'this passage', styles: {} },
+      { type: 'text', text: '==', styles: {} },
     ])
   })
 })
 
 describe('highlight Markdown preprocessing', () => {
-  it('marks raw markdown spans with sentinel tokens before BlockNote parse', () => {
-    expect(preProcessHighlightMarkdown('Keep ==this passage== safe')).toBe(
-      'Keep TOLARIA_HIGHLIGHT_OPENthis passageTOLARIA_HIGHLIGHT_CLOSE safe',
-    )
+  it('rewrites balanced highlight spans with internal markers before BlockNote parse', () => {
+    const preprocessed = preProcessHighlightMarkdown('Keep ==this passage== safe')
+
+    expect(preprocessed).toContain('this passage')
+    expect(preprocessed.startsWith('Keep ')).toBe(true)
+    expect(preprocessed.endsWith(' safe')).toBe(true)
+    expect(preprocessed).not.toContain('==this passage==')
+    expect(preprocessed).not.toContain('TOLARIA_HIGHLIGHT_OPEN')
+    expect(preprocessed).not.toContain('TOLARIA_HIGHLIGHT_CLOSE')
   })
 
   it('injects sentinel token text into styled BlockNote text', () => {
+    const { open, close } = readHighlightTokens('==this passage==')
     const injected = injectHighlightsInBlocks([
       {
         type: 'paragraph',
         content: [
           {
             type: 'text',
-            text: 'Keep TOLARIA_HIGHLIGHT_OPENthis passageTOLARIA_HIGHLIGHT_CLOSE safe',
+            text: `Keep ${open}this passage${close} safe`,
             styles: {},
           },
         ],
@@ -179,6 +198,85 @@ describe('highlight Markdown preprocessing', () => {
       { type: 'text', text: 'Keep ', styles: {} },
       { type: 'text', text: 'this passage', styles: { highlight: true } },
       { type: 'text', text: ' safe', styles: {} },
+    ])
+  })
+
+  it('keeps highlight state across split inline text nodes and preserves other styles', () => {
+    const { open, close } = readHighlightTokens('==before bold after==')
+    const injected = injectHighlightsInBlocks([
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: `${open}before `, styles: {} },
+          { type: 'text', text: 'bold', styles: { bold: true } },
+          { type: 'text', text: ` after${close}`, styles: {} },
+        ],
+        children: [],
+      },
+    ])
+
+    expect(injected[0].content).toEqual([
+      { type: 'text', text: 'before ', styles: { highlight: true } },
+      { type: 'text', text: 'bold', styles: { bold: true, highlight: true } },
+      { type: 'text', text: ' after', styles: { highlight: true } },
+    ])
+
+    const restored = restoreHighlightsInBlocks(injected)
+    const content = restored[0].content as Array<{ type: string; text?: string; styles?: Record<string, boolean | string> }>
+
+    expect(content.map((item) => item.text ?? '')).toEqual(['==', 'before ', 'bold', ' after', '=='])
+    expect(content.every((item) => !item.text?.includes('TOLARIA_HIGHLIGHT_'))).toBe(true)
+  })
+
+  it('round-trips highlight wrappers around wikilinks without leaking internal markers', () => {
+    const preprocessed = preProcessHighlightMarkdown(preProcessWikilinks('==[[Note]]=='))
+    const withWikilinks = injectWikilinks([
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text: preprocessed, styles: {} }],
+        children: [],
+      },
+    ])
+
+    const injected = injectHighlightsInBlocks(withWikilinks as never[])
+    const injectedContent = injected[0].content as Array<{ type: string; text?: string; props?: Record<string, unknown> }>
+    expect(injectedContent).toHaveLength(1)
+    expect(injectedContent[0].type).toBe('wikilink')
+    expect(injectedContent[0].props).toEqual({ target: 'Note' })
+    expect(injectedContent.every((item) => !(item.text ?? '').includes('TOLARIA_HIGHLIGHT_'))).toBe(true)
+
+    const restored = restoreWikilinksInBlocks(restoreHighlightsInBlocks(injected))
+    const content = restored[0].content as Array<{ type: string; text?: string }>
+
+    expect(content.map((item) => item.text ?? item.type)).toEqual(['==', '[[Note]]', '=='])
+    expect(content.every((item) => !(item.text ?? '').includes('TOLARIA_HIGHLIGHT_'))).toBe(true)
+  })
+
+  it('does not rewrite highlight markers inside inline math', () => {
+    expect(preProcessHighlightMarkdown('$==x==$')).toBe('$==x==$')
+  })
+
+  it('does not reinterpret the old printable marker text as a highlight', () => {
+    const injected = injectHighlightsInBlocks([
+      {
+        type: 'paragraph',
+        content: [
+          {
+            type: 'text',
+            text: 'TOLARIA_HIGHLIGHT_OPENxTOLARIA_HIGHLIGHT_CLOSE',
+            styles: {},
+          },
+        ],
+        children: [],
+      },
+    ])
+
+    expect(injected[0].content).toEqual([
+      {
+        type: 'text',
+        text: 'TOLARIA_HIGHLIGHT_OPENxTOLARIA_HIGHLIGHT_CLOSE',
+        styles: {},
+      },
     ])
   })
 })

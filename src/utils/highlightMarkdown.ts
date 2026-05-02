@@ -3,8 +3,10 @@ import type { VaultEntry } from '../types'
 export const HIGHLIGHT_STYLE_KEY = 'highlight' as const
 export const HIGHLIGHT_JUMP_EVENT = 'tolaria:highlight-jump' as const
 export const HIGHLIGHT_PULSE_CLASS = 'tolaria-highlight-pulse' as const
-const HIGHLIGHT_OPEN_SENTINEL = 'TOLARIA_HIGHLIGHT_OPEN'
-const HIGHLIGHT_CLOSE_SENTINEL = 'TOLARIA_HIGHLIGHT_CLOSE'
+const HIGHLIGHT_OPEN_SENTINEL = '\uE000\uE001'
+const HIGHLIGHT_CLOSE_SENTINEL = '\uE000\uE002'
+const HIGHLIGHT_WRAPPER_KEY = '__tolariaHighlightWrapper'
+const CODE_FENCE_PREFIXES = ['```', '~~~']
 
 export interface HighlightExcerpt {
   id: string
@@ -21,14 +23,16 @@ export interface HighlightGroup {
   highlights: HighlightExcerpt[]
 }
 
-type InlineText = {
-  type: 'text'
-  text: string
+type InlineItem = {
+  type: string
+  text?: string
   styles?: Record<string, boolean | string>
+  [HIGHLIGHT_WRAPPER_KEY]?: true
+  [key: string]: unknown
 }
 
 type TableCellLike = {
-  content?: InlineText[]
+  content?: InlineItem[]
   [key: string]: unknown
 }
 
@@ -43,7 +47,7 @@ type TableContentLike = {
   [key: string]: unknown
 }
 
-type BlockContent = Array<InlineText | Record<string, unknown>> | TableContentLike | unknown
+type BlockContent = Array<InlineItem | Record<string, unknown>> | TableContentLike | unknown
 
 type EditorBlock = {
   content?: BlockContent
@@ -79,6 +83,42 @@ function normalizeExcerpt(text: string): string {
 
 function buildHighlightId(notePath: string, startOffset: number, endOffset: number, excerpt: string): string {
   return `${notePath}:${startOffset}:${endOffset}:${hashExcerpt(excerpt)}`
+}
+
+function isEscaped(text: string, index: number): boolean {
+  let slashCount = 0
+  for (let current = index - 1; current >= 0 && text[current] === '\\'; current -= 1) {
+    slashCount += 1
+  }
+  return slashCount % 2 === 1
+}
+
+function isCodeFence(line: string): boolean {
+  const trimmed = line.trimStart()
+  return CODE_FENCE_PREFIXES.some((prefix) => trimmed.startsWith(prefix))
+}
+
+function isSingleDollar(text: string, index: number): boolean {
+  return text[index] === '$' && text[index - 1] !== '$' && text[index + 1] !== '$'
+}
+
+function findInlineMathEnd(text: string, start: number): number {
+  for (let index = start + 1; index < text.length; index += 1) {
+    if (isSingleDollar(text, index) && !isEscaped(text, index)) {
+      return index
+    }
+  }
+  return -1
+}
+
+function readInlineMath(text: string, index: number): { end: number } | null {
+  if (!isSingleDollar(text, index) || isEscaped(text, index)) return null
+  const end = findInlineMathEnd(text, index)
+  if (end === -1) return null
+
+  const latex = text.slice(index + 1, end)
+  if (!latex.trim() || /^\s|\s$/.test(latex)) return null
+  return { end }
 }
 
 function readBalancedHighlight(markdown: string, start: number): {
@@ -190,26 +230,63 @@ export function filterHighlightGroups(groups: HighlightGroup[], query: string): 
 }
 
 export function preProcessHighlightMarkdown(markdown: string): string {
-  let result = ''
-  let index = 0
+  const lines = markdown.split('\n')
+  const result: string[] = []
+  let inFence = false
 
-  while (index < markdown.length) {
-    const highlight = readBalancedHighlight(markdown, index)
-    if (!highlight) {
-      result += markdown[index]
-      index += 1
+  for (const line of lines) {
+    if (isCodeFence(line)) {
+      inFence = !inFence
+      result.push(line)
       continue
     }
 
-    if (normalizeExcerpt(highlight.rawText).length === 0) {
-      result += markdown.slice(index, highlight.closeOffset + 2)
-    } else {
-      result += `${HIGHLIGHT_OPEN_SENTINEL}${highlight.rawText}${HIGHLIGHT_CLOSE_SENTINEL}`
+    if (inFence) {
+      result.push(line)
+      continue
     }
-    index = highlight.closeOffset + 2
+
+    let processed = ''
+    let index = 0
+    let inCodeSpan = false
+
+    while (index < line.length) {
+      const char = line[index]
+      if (char === '`') {
+        inCodeSpan = !inCodeSpan
+        processed += char
+        index += 1
+        continue
+      }
+
+      if (!inCodeSpan) {
+        const inlineMath = readInlineMath(line, index)
+        if (inlineMath) {
+          processed += line.slice(index, inlineMath.end + 1)
+          index = inlineMath.end + 1
+          continue
+        }
+
+        const highlight = readBalancedHighlight(line, index)
+        if (highlight) {
+          if (normalizeExcerpt(highlight.rawText).length === 0) {
+            processed += line.slice(index, highlight.closeOffset + 2)
+          } else {
+            processed += `${HIGHLIGHT_OPEN_SENTINEL}${highlight.rawText}${HIGHLIGHT_CLOSE_SENTINEL}`
+          }
+          index = highlight.closeOffset + 2
+          continue
+        }
+      }
+
+      processed += char
+      index += 1
+    }
+
+    result.push(processed)
   }
 
-  return result
+  return result.join('\n')
 }
 
 function isTableContent(content: BlockContent): content is TableContentLike {
@@ -224,7 +301,7 @@ function isTableContent(content: BlockContent): content is TableContentLike {
 
 function transformTableCell(
   cell: TableCellLike | string,
-  transform: (content: InlineText[]) => InlineText[],
+  transform: (content: InlineItem[]) => InlineItem[],
 ): TableCellLike | string {
   if (typeof cell === 'string' || !Array.isArray(cell.content)) return cell
   return { ...cell, content: transform(cell.content) }
@@ -232,9 +309,9 @@ function transformTableCell(
 
 function transformContent(
   content: BlockContent,
-  transform: (content: InlineText[]) => InlineText[],
+  transform: (content: InlineItem[]) => InlineItem[],
 ): BlockContent {
-  if (Array.isArray(content)) return transform(content as InlineText[])
+  if (Array.isArray(content)) return transform(content as InlineItem[])
   if (isTableContent(content)) {
     return {
       ...content,
@@ -251,54 +328,78 @@ function highlightStyles(styles?: Record<string, boolean | string>): Record<stri
   return { ...(styles ?? {}), [HIGHLIGHT_STYLE_KEY]: true }
 }
 
-function expandHighlightTokensInContent(content: InlineText[]): InlineText[] {
-  return content.flatMap(expandHighlightTokensInItem)
+function markItemInsideHighlight<T extends InlineItem>(item: T): T {
+  return { ...item, [HIGHLIGHT_WRAPPER_KEY]: true }
 }
 
-function expandHighlightTokensInItem(item: InlineText): InlineText[] {
-  if (item.type !== 'text' || typeof item.text !== 'string' || !item.text.includes(HIGHLIGHT_OPEN_SENTINEL)) {
-    return [item]
+function injectHighlightsInSequence(content: InlineItem[]): InlineItem[] {
+  const result: InlineItem[] = []
+  let inHighlight = false
+
+  for (const item of content) {
+    if (item.type === 'text' && typeof item.text === 'string') {
+      const nextItems = consumeHighlightTokensFromText(item, inHighlight)
+      result.push(...nextItems.items)
+      inHighlight = nextItems.inHighlight
+      continue
+    }
+
+    result.push(inHighlight ? markItemInsideHighlight(item) : item)
   }
 
-  const parts: InlineText[] = []
+  return result
+}
+
+function consumeHighlightTokensFromText(
+  item: InlineItem,
+  initialHighlightState: boolean,
+): { items: InlineItem[]; inHighlight: boolean } {
+  const result: InlineItem[] = []
+  let inHighlight = initialHighlightState
   let cursor = 0
-  const { text } = item
+  const text = item.text as string
 
   while (cursor < text.length) {
-    const openIndex = text.indexOf(HIGHLIGHT_OPEN_SENTINEL, cursor)
-    if (openIndex === -1) {
-      if (cursor < text.length) parts.push({ ...item, text: text.slice(cursor) })
+    const nextToken = inHighlight
+      ? text.indexOf(HIGHLIGHT_CLOSE_SENTINEL, cursor)
+      : text.indexOf(HIGHLIGHT_OPEN_SENTINEL, cursor)
+
+    if (nextToken === -1) {
+      const remaining = text.slice(cursor)
+      if (remaining) {
+        result.push({
+          ...item,
+          text: remaining,
+          styles: inHighlight ? highlightStyles(item.styles) : item.styles,
+        })
+      }
       break
     }
 
-    if (openIndex > cursor) {
-      parts.push({ ...item, text: text.slice(cursor, openIndex) })
-    }
-
-    const contentStart = openIndex + HIGHLIGHT_OPEN_SENTINEL.length
-    const closeIndex = text.indexOf(HIGHLIGHT_CLOSE_SENTINEL, contentStart)
-    if (closeIndex === -1) {
-      parts.push({ ...item, text: text.slice(openIndex) })
-      break
-    }
-
-    if (closeIndex > contentStart) {
-      parts.push({
+    const slice = text.slice(cursor, nextToken)
+    if (slice) {
+      result.push({
         ...item,
-        text: text.slice(contentStart, closeIndex),
-        styles: highlightStyles(item.styles),
+        text: slice,
+        styles: inHighlight ? highlightStyles(item.styles) : item.styles,
       })
     }
-    cursor = closeIndex + HIGHLIGHT_CLOSE_SENTINEL.length
+
+    cursor = nextToken + (
+      inHighlight
+        ? HIGHLIGHT_CLOSE_SENTINEL.length
+        : HIGHLIGHT_OPEN_SENTINEL.length
+    )
+    inHighlight = !inHighlight
   }
 
-  return parts
+  return { items: result, inHighlight }
 }
 
 function injectHighlightsInBlock<T extends EditorBlock>(block: T): T {
   return {
     ...block,
-    content: transformContent(block.content, expandHighlightTokensInContent),
+    content: transformContent(block.content, injectHighlightsInSequence),
     children: Array.isArray(block.children)
       ? injectHighlightsInBlocks(block.children)
       : block.children,
@@ -309,29 +410,56 @@ export function injectHighlightsInBlocks<T extends EditorBlock>(blocks: T[]): T[
   return blocks.map(injectHighlightsInBlock)
 }
 
-function restoreHighlightText(inline: InlineText): InlineText {
-  const styles = inline.styles ?? {}
-  if (styles[HIGHLIGHT_STYLE_KEY] !== true) return inline
+function isHighlightedInline(item: InlineItem): boolean {
+  return item[HIGHLIGHT_WRAPPER_KEY] === true
+    || item.styles?.[HIGHLIGHT_STYLE_KEY] === true
+}
 
+function stripHighlightFromInline<T extends InlineItem>(item: T): T {
+  const nextItem = { ...item }
+  delete nextItem[HIGHLIGHT_WRAPPER_KEY]
+
+  if (item.type !== 'text' || typeof item.text !== 'string') return nextItem
+
+  const styles = item.styles ?? {}
   const restStyles = { ...styles }
   delete restStyles[HIGHLIGHT_STYLE_KEY]
+
   return {
-    ...inline,
-    text: `==${inline.text}==`,
+    ...nextItem,
     styles: restStyles,
   }
+}
+
+function restoreHighlightsInSequence(content: InlineItem[]): InlineItem[] {
+  const result: InlineItem[] = []
+  let inHighlight = false
+
+  for (const item of content) {
+    const highlighted = isHighlightedInline(item)
+
+    if (highlighted && !inHighlight) {
+      result.push({ type: 'text', text: '==', styles: {} })
+      inHighlight = true
+    } else if (!highlighted && inHighlight) {
+      result.push({ type: 'text', text: '==', styles: {} })
+      inHighlight = false
+    }
+
+    result.push(stripHighlightFromInline(item))
+  }
+
+  if (inHighlight) {
+    result.push({ type: 'text', text: '==', styles: {} })
+  }
+
+  return result
 }
 
 export function restoreHighlightsInBlocks<T extends EditorBlock>(blocks: T[]): T[] {
   return blocks.map((block) => ({
     ...block,
-    content: transformContent(block.content, (content) => (
-      content.map((inline) => (
-        inline.type === 'text' && typeof inline.text === 'string'
-          ? restoreHighlightText(inline)
-          : inline
-      ))
-    )),
+    content: transformContent(block.content, restoreHighlightsInSequence),
     children: Array.isArray(block.children)
       ? restoreHighlightsInBlocks(block.children)
       : block.children,
