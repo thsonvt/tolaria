@@ -98,6 +98,17 @@ describe('normalizeThoughtRecord', () => {
         quote: 'should not exist',
       },
     })).toBeNull()
+    expect(normalizeThoughtRecord({
+      ...baseThought,
+      extra_field: 'x',
+    })).toBeNull()
+    expect(normalizeThoughtRecord({
+      ...baseThought,
+      anchor: {
+        ...baseThought.anchor,
+        extra_field: 'x',
+      },
+    })).toBeNull()
   })
 })
 

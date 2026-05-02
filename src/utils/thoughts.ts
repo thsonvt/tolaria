@@ -43,7 +43,7 @@ export interface ThoughtJumpEventDetail {
   thought: ThoughtRecord
 }
 
-interface SelectionThoughtDraftOptions {
+export interface SelectionThoughtDraftOptions {
   notePath: string
   noteTitle: string
   selectedText: string
@@ -53,7 +53,7 @@ interface SelectionThoughtDraftOptions {
   id?: string
 }
 
-interface ArticleThoughtDraftOptions {
+export interface ArticleThoughtDraftOptions {
   notePath: string
   noteTitle: string
   bodyMarkdown: string
@@ -81,21 +81,8 @@ function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
 }
 
-function hasKnownSnakeCaseThoughtKeys(value: Record<string, unknown>): boolean {
-  return [
-    'note_path',
-    'note_title',
-    'body_markdown',
-    'created_at',
-    'updated_at',
-  ].some((key) => hasOwnKey(value, key))
-}
-
-function hasKnownSnakeCaseAnchorKeys(value: Record<string, unknown>): boolean {
-  return [
-    'start_offset',
-    'end_offset',
-  ].some((key) => hasOwnKey(value, key))
+function hasUnderscoreKey(value: Record<string, unknown>): boolean {
+  return Object.keys(value).some((key) => key.includes('_'))
 }
 
 function hasSelectionOnlyCamelCaseAnchorKeys(value: Record<string, unknown>): boolean {
@@ -186,7 +173,7 @@ function buildSelectionMatches(markdown: string, quote: string): ThoughtAnchorMa
 
 function normalizeThoughtAnchor(value: unknown): ThoughtAnchor | null {
   if (!isObject(value) || typeof value.type !== 'string') return null
-  if (hasKnownSnakeCaseAnchorKeys(value)) return null
+  if (hasUnderscoreKey(value)) return null
 
   if (value.type === 'article') {
     if (hasSelectionOnlyCamelCaseAnchorKeys(value)) return null
@@ -270,7 +257,7 @@ function selectionContextScore(
 
 export function normalizeThoughtRecord(value: unknown): ThoughtRecord | null {
   if (!isObject(value)) return null
-  if (hasKnownSnakeCaseThoughtKeys(value)) return null
+  if (hasUnderscoreKey(value)) return null
 
   const anchor = normalizeThoughtAnchor(value.anchor)
   if (!anchor) return null
