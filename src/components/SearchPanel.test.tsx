@@ -70,6 +70,12 @@ const MOCK_ENTRIES: VaultEntry[] = [
 describe('SearchPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockInvokeFn.mockImplementation((command) => {
+      if (command === 'semantic_index_status') {
+        return new Promise(() => {})
+      }
+      return Promise.resolve({ results: [], elapsed_ms: 0 })
+    })
   })
 
   it('renders nothing when closed', () => {
@@ -94,12 +100,12 @@ describe('SearchPanel', () => {
     expect(screen.getByText('Enter to open · Esc to close')).toBeInTheDocument()
   })
 
-  it('has no keyword/semantic toggle', () => {
+  it('shows keyword and semantic search mode controls', () => {
     render(
       <SearchPanel open={true} vaultPath="/vault" entries={MOCK_ENTRIES} onSelectNote={vi.fn()} onClose={vi.fn()} />,
     )
-    expect(screen.queryByText('Keyword')).not.toBeInTheDocument()
-    expect(screen.queryByText('Semantic')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Keyword search' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Semantic search disabled' })).toBeInTheDocument()
   })
 
   it('calls onClose when clicking overlay', () => {
@@ -147,6 +153,55 @@ describe('SearchPanel', () => {
 
     await waitFor(() => {
       expect(screen.getByText('How to Design AI-first APIs')).toBeInTheDocument()
+    })
+  })
+
+  it('uses semantic search command when semantic mode is selected and enabled', async () => {
+    mockInvokeFn.mockImplementation((command) => {
+      if (command === 'semantic_index_status') {
+        return Promise.resolve({
+          enabled: true,
+          model_ready: true,
+          index_state: 'ready',
+          indexed_notes: 2,
+          total_notes: 2,
+          message: null,
+        })
+      }
+      if (command === 'search_vault_semantic') {
+        return Promise.resolve({
+          results: [],
+          elapsed_ms: 1,
+          query: 'notes by Shau',
+          mode: 'semantic',
+        })
+      }
+      return Promise.resolve({
+        results: [],
+        elapsed_ms: 1,
+        query: '',
+        mode: 'keyword',
+      })
+    })
+
+    render(
+      <SearchPanel open={true} vaultPath="/vault" entries={MOCK_ENTRIES} onSelectNote={vi.fn()} onClose={vi.fn()} />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Semantic search' })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Semantic search' }))
+    fireEvent.change(screen.getByPlaceholderText('Search in all notes...'), {
+      target: { value: 'notes by Shau' },
+    })
+
+    await waitFor(() => {
+      expect(mockInvokeFn).toHaveBeenCalledWith('search_vault_semantic', {
+        vaultPath: '/vault',
+        query: 'notes by Shau',
+        limit: 20,
+      })
     })
   })
 
@@ -332,9 +387,12 @@ describe('SearchPanel', () => {
 
   it('shows loading spinner while searching', async () => {
     const resolvers: ((v: unknown) => void)[] = []
-    mockInvokeFn.mockImplementation(
-      () => new Promise(resolve => { resolvers.push(resolve) }),
-    )
+    mockInvokeFn.mockImplementation((command) => {
+      if (command === 'semantic_index_status') {
+        return new Promise(() => {})
+      }
+      return new Promise(resolve => { resolvers.push(resolve) })
+    })
 
     render(
       <SearchPanel open={true} vaultPath="/vault" entries={MOCK_ENTRIES} onSelectNote={vi.fn()} onClose={vi.fn()} />,
@@ -415,9 +473,12 @@ describe('SearchPanel', () => {
 
   it('cancels inflight searches when panel closes', async () => {
     const resolvers: ((v: unknown) => void)[] = []
-    mockInvokeFn.mockImplementation(
-      () => new Promise(resolve => { resolvers.push(resolve) }),
-    )
+    mockInvokeFn.mockImplementation((command) => {
+      if (command === 'semantic_index_status') {
+        return new Promise(() => {})
+      }
+      return new Promise(resolve => { resolvers.push(resolve) })
+    })
 
     const { rerender } = render(
       <SearchPanel open={true} vaultPath="/vault" entries={MOCK_ENTRIES} onSelectNote={vi.fn()} onClose={vi.fn()} />,

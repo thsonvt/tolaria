@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import type { SearchResult } from '../types'
+import type { SearchMode, SearchResult } from '../types'
 import { invoke } from '@tauri-apps/api/core'
 import { isTauri, mockInvoke } from '../mock-tauri'
 import { GITIGNORED_VISIBILITY_CHANGED_EVENT } from '../lib/gitignoredVisibilityEvents'
@@ -19,10 +19,14 @@ interface SearchResponseData {
 
 const DEBOUNCE_MS = 300
 
-function searchCall(args: Record<string, unknown>): Promise<SearchResponseData> {
+function searchCall(
+  mode: SearchMode,
+  args: Record<string, unknown>,
+): Promise<SearchResponseData> {
+  const command = mode === 'semantic' ? 'search_vault_semantic' : 'search_vault'
   return isTauri()
-    ? invoke<SearchResponseData>('search_vault', args)
-    : mockInvoke<SearchResponseData>('search_vault', args)
+    ? invoke<SearchResponseData>(command, args)
+    : mockInvoke<SearchResponseData>(command, args)
 }
 
 function mapResults(raw: SearchResultData[]): SearchResult[] {
@@ -66,7 +70,11 @@ function useGitignoredVisibilitySearchRefresh({
   }, [active, performSearch, query])
 }
 
-export function useUnifiedSearch(vaultPath: string, active: boolean) {
+export function useUnifiedSearch(
+  vaultPath: string,
+  active: boolean,
+  mode: SearchMode = 'keyword',
+) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchResult[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -98,7 +106,10 @@ export function useUnifiedSearch(vaultPath: string, active: boolean) {
     const gen = searchGenRef.current
     setLoading(true)
     try {
-      const response = await searchCall({ vaultPath, query: q, mode: 'keyword', limit: 20 })
+      const args = mode === 'semantic'
+        ? { vaultPath, query: q, limit: 20 }
+        : { vaultPath, query: q, mode, limit: 20 }
+      const response = await searchCall(mode, args)
       if (gen !== searchGenRef.current) return
       setResults(mapResults(response.results))
       setElapsedMs(response.elapsed_ms)
@@ -108,7 +119,7 @@ export function useUnifiedSearch(vaultPath: string, active: boolean) {
     } finally {
       if (gen === searchGenRef.current) setLoading(false)
     }
-  }, [vaultPath])
+  }, [mode, vaultPath])
 
   useEffect(() => {
     clearTimeout(debounceRef.current ?? undefined)

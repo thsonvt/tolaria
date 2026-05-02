@@ -1,12 +1,22 @@
-import { useRef, useEffect, useCallback, useLayoutEffect } from 'react'
-import { useMemo } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { cn } from '@/lib/utils'
-import type { SearchResult, VaultEntry } from '../types'
+import type { SearchMode, SearchResult, VaultEntry } from '../types'
+import { useSemanticSearchSettings } from '../hooks/useSemanticSearchSettings'
 import { useUnifiedSearch } from '../hooks/useUnifiedSearch'
 import { getTypeColor, buildTypeEntryMap } from '../utils/typeColors'
 import { formatSearchSubtitle } from '../utils/noteListHelpers'
 import { getTypeIcon } from './NoteItem'
 import { NoteTitleIcon } from './NoteTitleIcon'
+import { SearchModeToggle } from './SearchModeToggle'
+import { Input } from './ui/input'
 
 interface SearchPanelProps {
   open: boolean
@@ -17,9 +27,12 @@ interface SearchPanelProps {
 }
 
 export function SearchPanel({ open, vaultPath, entries, onSelectNote, onClose }: SearchPanelProps) {
+  const [mode, setMode] = useState<SearchMode>('keyword')
+  const { status: semanticStatus } = useSemanticSearchSettings(open)
+  const semanticEnabled = semanticStatus?.enabled === true && semanticStatus.indexState === 'ready'
   const {
     query, setQuery, results, selectedIndex, setSelectedIndex, loading, elapsedMs,
-  } = useUnifiedSearch(vaultPath, open)
+  } = useUnifiedSearch(vaultPath, open, mode)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -95,6 +108,10 @@ export function SearchPanel({ open, vaultPath, entries, onSelectNote, onClose }:
           ref={inputRef}
           query={query}
           loading={loading}
+          mode={mode}
+          semanticEnabled={semanticEnabled}
+          onModeChange={setMode}
+          onEnableSemanticRequest={() => setMode('keyword')}
           onChange={setQuery}
           onKeyDown={handleKeyDown}
         />
@@ -115,31 +132,48 @@ export function SearchPanel({ open, vaultPath, entries, onSelectNote, onClose }:
   )
 }
 
-import { forwardRef } from 'react'
-
 interface SearchInputProps {
   query: string
   loading: boolean
+  mode: SearchMode
+  semanticEnabled: boolean
+  onModeChange: (mode: SearchMode) => void
+  onEnableSemanticRequest: () => void
   onChange: (value: string) => void
   onKeyDown?: React.KeyboardEventHandler<HTMLInputElement>
 }
 
 const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(
-  function SearchInput({ query, loading, onChange, onKeyDown }, ref) {
+  function SearchInput({
+    query,
+    loading,
+    mode,
+    semanticEnabled,
+    onModeChange,
+    onEnableSemanticRequest,
+    onChange,
+    onKeyDown,
+  }, ref) {
     return (
       <div className="flex items-center gap-3 border-b border-border px-4 py-3">
         <svg className="h-4 w-4 shrink-0 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="11" cy="11" r="8" />
           <path d="m21 21-4.35-4.35" />
         </svg>
-        <input
+        <Input
           ref={ref}
-          className="flex-1 bg-transparent text-[15px] text-foreground outline-none placeholder:text-muted-foreground"
+          className="h-auto flex-1 border-0 bg-transparent p-0 text-[15px] shadow-none focus-visible:ring-0"
           type="text"
           placeholder="Search in all notes..."
           value={query}
           onChange={e => onChange(e.target.value)}
           onKeyDown={onKeyDown}
+        />
+        <SearchModeToggle
+          value={mode}
+          semanticEnabled={semanticEnabled}
+          onChange={onModeChange}
+          onEnableRequest={onEnableSemanticRequest}
         />
         {loading && (
           <svg

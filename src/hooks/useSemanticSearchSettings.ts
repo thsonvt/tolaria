@@ -42,8 +42,12 @@ export function useSemanticSearchSettings(active: boolean) {
   const [status, setStatus] = useState<SemanticStatus | null>(null)
 
   const refresh = useCallback(async () => {
-    const next = await semanticCall<SemanticStatusData>('semantic_index_status')
-    setStatus(mapStatus(next))
+    try {
+      const next = await semanticCall<SemanticStatusData>('semantic_index_status')
+      setStatus(mapStatus(next))
+    } catch {
+      setStatus(null)
+    }
   }, [])
 
   useEffect(() => {
@@ -51,8 +55,12 @@ export function useSemanticSearchSettings(active: boolean) {
 
     let cancelled = false
     async function loadStatus() {
-      const next = await semanticCall<SemanticStatusData>('semantic_index_status')
-      if (!cancelled) setStatus(mapStatus(next))
+      try {
+        const next = await semanticCall<SemanticStatusData>('semantic_index_status')
+        if (!cancelled) setStatus(mapStatus(next))
+      } catch {
+        if (!cancelled) setStatus(null)
+      }
     }
 
     void loadStatus()
