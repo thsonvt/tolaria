@@ -52,6 +52,8 @@ Vault data exists in three forms simultaneously:
 
 These must never diverge permanently. If they do, the filesystem wins and the cache/state are rebuilt.
 
+Semantic search adds a fourth reconstructible cache under `~/.laputa/cache/<vault-hash>/semantic/`. It is not an authority: deleting it only forces a rebuild from Markdown files, frontmatter, and the local embedding model cache.
+
 ```mermaid
 flowchart LR
     FS["🗂️ Filesystem\n.md files on disk\n(source of truth)"]
@@ -107,7 +109,7 @@ The main window starts a native watcher for the active vault through `start_vaul
 | Frontmatter parsing | gray_matter | 0.2 |
 | Filesystem watcher | notify | 6.1 |
 | AI (agent panel) | CLI agent adapters (Claude Code + Codex + OpenCode + Pi) | - |
-| Search | Keyword (walkdir-based file scan) | - |
+| Search | Keyword by default; opt-in local semantic search for Markdown notes | `walkdir`, `fastembed` |
 | Localization | App-owned runtime + JSON catalogs (`src/lib/i18n.ts`, `src/lib/locales/*.json`, `lara.yaml`) | English fallback + Lara CLI sync |
 | MCP | @modelcontextprotocol/sdk | 1.0 |
 | Tests | Vitest (unit), Playwright (E2E/smoke), cargo test (Rust) | - |

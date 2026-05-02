@@ -57,6 +57,12 @@ The frontmatter parser (Rust: `vault/mod.rs`, TS: `utils/frontmatter.ts`) must f
 
 All data lives in markdown files with YAML frontmatter. There is no database — the filesystem is the source of truth.
 
+### Semantic Search Cache
+
+Semantic search indexes Markdown notes only. Each indexed note is represented by chunks derived from the note body plus a metadata header built from title, type, aliases, and scalar frontmatter. Relationship keys and outgoing wikilinks are copied into index metadata for future graph features, but v1 search does not compute paths, centrality, or communities.
+
+The cache is stored outside the vault and can be rebuilt from the filesystem at any time.
+
 ### Vault Git Capability
 
 Git is a per-vault capability, not a prerequisite for the document model. A vault can be:
