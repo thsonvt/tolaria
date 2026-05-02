@@ -40,11 +40,17 @@ function hashExcerpt(excerpt: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
-function isBoundaryEquals(markdown: string, index: number): boolean {
+function isOpeningBoundaryEquals(markdown: string, index: number): boolean {
   return markdown[index] === '='
     && markdown[index + 1] === '='
     && markdown[index - 1] !== '='
     && markdown[index + 2] !== '='
+}
+
+function isClosingBoundaryEquals(markdown: string, index: number): boolean {
+  return markdown[index] === '='
+    && markdown[index + 1] === '='
+    && markdown[index - 1] !== '='
 }
 
 function normalizeExcerpt(text: string): string {
@@ -65,7 +71,7 @@ export function parseMarkdownHighlights(options: {
   let index = 0
 
   while (index < markdown.length - 1) {
-    if (!isBoundaryEquals(markdown, index)) {
+    if (!isOpeningBoundaryEquals(markdown, index)) {
       index += 1
       continue
     }
@@ -76,7 +82,7 @@ export function parseMarkdownHighlights(options: {
     index = contentStart
 
     while (index < markdown.length - 1) {
-      if (isBoundaryEquals(markdown, index)) {
+      if (isClosingBoundaryEquals(markdown, index)) {
         closeOffset = index
         break
       }

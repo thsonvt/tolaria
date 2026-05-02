@@ -42,6 +42,34 @@ describe('parseMarkdownHighlights', () => {
     ])
   })
 
+  it('parses a highlight when the closing marker is followed by a literal equals', () => {
+    const highlights = parseMarkdownHighlights({
+      markdown: '==a===',
+      ...note,
+    })
+
+    expect(highlights).toHaveLength(1)
+    expect(highlights[0]).toMatchObject({
+      excerpt: 'a',
+      startOffset: 0,
+      endOffset: 5,
+    })
+  })
+
+  it('parses a highlight with surrounding text when the closing marker is followed by a literal equals', () => {
+    const highlights = parseMarkdownHighlights({
+      markdown: 'x ==a=== y',
+      ...note,
+    })
+
+    expect(highlights).toHaveLength(1)
+    expect(highlights[0]).toMatchObject({
+      excerpt: 'a',
+      startOffset: 2,
+      endOffset: 7,
+    })
+  })
+
   it('does not emit nested highlight output for four equals around text', () => {
     const highlights = parseMarkdownHighlights({
       markdown: 'Prefix ====text==== suffix',
