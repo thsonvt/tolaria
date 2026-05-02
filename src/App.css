@@ -76,3 +76,26 @@
 .ai-highlight {
   animation: ai-highlight-glow 0.8s ease-out;
 }
+
+.tolaria-highlight {
+  background: color-mix(in srgb, #facc15 38%, transparent);
+  border-radius: 3px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  padding: 0 1px;
+}
+
+.tolaria-highlight-pulse {
+  animation: tolaria-highlight-pulse 1.35s ease-out 1;
+}
+
+@keyframes tolaria-highlight-pulse {
+  0% {
+    background: color-mix(in srgb, #facc15 78%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, #facc15 55%, transparent);
+  }
+  100% {
+    background: color-mix(in srgb, #facc15 38%, transparent);
+    box-shadow: 0 0 0 10px transparent;
+  }
+}

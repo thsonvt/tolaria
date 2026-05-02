@@ -3,7 +3,9 @@ import {
   HIGHLIGHT_STYLE_KEY,
   buildHighlightGroups,
   filterHighlightGroups,
+  injectHighlightsInBlocks,
   parseMarkdownHighlights,
+  preProcessHighlightMarkdown,
   restoreHighlightsInBlocks,
 } from './highlightMarkdown'
 
@@ -147,6 +149,36 @@ describe('restoreHighlightsInBlocks', () => {
     expect(restored[0].content).toEqual([
       { type: 'text', text: 'Keep ', styles: {} },
       { type: 'text', text: '==this passage==', styles: {} },
+    ])
+  })
+})
+
+describe('highlight Markdown preprocessing', () => {
+  it('marks raw markdown spans with sentinel tokens before BlockNote parse', () => {
+    expect(preProcessHighlightMarkdown('Keep ==this passage== safe')).toBe(
+      'Keep TOLARIA_HIGHLIGHT_OPENthis passageTOLARIA_HIGHLIGHT_CLOSE safe',
+    )
+  })
+
+  it('injects sentinel token text into styled BlockNote text', () => {
+    const injected = injectHighlightsInBlocks([
+      {
+        type: 'paragraph',
+        content: [
+          {
+            type: 'text',
+            text: 'Keep TOLARIA_HIGHLIGHT_OPENthis passageTOLARIA_HIGHLIGHT_CLOSE safe',
+            styles: {},
+          },
+        ],
+        children: [],
+      },
+    ])
+
+    expect(injected[0].content).toEqual([
+      { type: 'text', text: 'Keep ', styles: {} },
+      { type: 'text', text: 'this passage', styles: { highlight: true } },
+      { type: 'text', text: ' safe', styles: {} },
     ])
   })
 })

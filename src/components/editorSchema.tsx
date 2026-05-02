@@ -1,9 +1,16 @@
 /* eslint-disable react-refresh/only-export-components -- module-level schema, not a component file */
-import { createCodeBlockSpec, BlockNoteSchema, defaultInlineContentSpecs } from '@blocknote/core'
+import {
+  BlockNoteSchema,
+  createCodeBlockSpec,
+  createStyleSpec,
+  defaultInlineContentSpecs,
+  defaultStyleSpecs,
+} from '@blocknote/core'
 import { codeBlockOptions } from '@blocknote/code-block'
 import { createReactBlockSpec, createReactInlineContentSpec } from '@blocknote/react'
 import { resolveWikilinkColor as resolveColor } from '../utils/wikilinkColors'
 import { resolveEntry } from '../utils/wikilink'
+import { HIGHLIGHT_STYLE_KEY } from '../utils/highlightMarkdown'
 import { MATH_BLOCK_TYPE, MATH_INLINE_TYPE, renderMathToHtml } from '../utils/mathMarkdown'
 import { MERMAID_BLOCK_TYPE } from '../utils/mermaidMarkdown'
 import type { VaultEntry } from '../types'
@@ -131,12 +138,45 @@ const codeBlock = createCodeBlockSpec({
 })
 const mathBlock = MathBlock()
 const mermaidBlock = MermaidBlock()
+const highlightStyle = createStyleSpec(
+  {
+    type: HIGHLIGHT_STYLE_KEY,
+    propSchema: 'boolean',
+  },
+  {
+    render: () => {
+      const mark = document.createElement('mark')
+      mark.className = 'tolaria-highlight'
+      return {
+        dom: mark,
+        contentDOM: mark,
+      }
+    },
+    toExternalHTML: () => {
+      const mark = document.createElement('mark')
+      mark.className = 'tolaria-highlight'
+      return {
+        dom: mark,
+        contentDOM: mark,
+      }
+    },
+    parse: (element) => (
+      element.tagName === 'MARK' && element.classList.contains('tolaria-highlight')
+        ? true
+        : undefined
+    ),
+  },
+)
 
 export const schema = BlockNoteSchema.create({
   inlineContentSpecs: {
     ...defaultInlineContentSpecs,
     wikilink: WikiLink,
     mathInline: MathInline,
+  },
+  styleSpecs: {
+    ...defaultStyleSpecs,
+    highlight: highlightStyle,
   },
 }).extend({
   blockSpecs: {

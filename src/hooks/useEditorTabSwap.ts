@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from 'react'
 import type { useCreateBlockNote } from '@blocknote/react'
 import type { VaultEntry } from '../types'
+import {
+  injectHighlightsInBlocks,
+  preProcessHighlightMarkdown,
+  restoreHighlightsInBlocks,
+} from '../utils/highlightMarkdown'
 import { splitFrontmatter, preProcessWikilinks, injectWikilinks, restoreWikilinksInBlocks } from '../utils/wikilinks'
 import { compactMarkdown } from '../utils/compact-markdown'
 import { injectMathInBlocks, preProcessMathMarkdown } from '../utils/mathMarkdown'
@@ -138,12 +143,14 @@ function preProcessEditorMarkdown(markdown: string, vaultPath?: string): string 
   const withMermaid = preProcessMermaidMarkdown({ markdown })
   const withImages = vaultPath ? resolveImageUrls(withMermaid, vaultPath) : withMermaid
   const withWikilinks = preProcessWikilinks(withImages)
-  return preProcessMathMarkdown({ markdown: withWikilinks })
+  const withHighlights = preProcessHighlightMarkdown(withWikilinks)
+  return preProcessMathMarkdown({ markdown: withHighlights })
 }
 
 function injectEditorMarkdownBlocks(blocks: EditorBlocks): EditorBlocks {
   const withWikilinks = injectWikilinks(blocks)
-  const withMath = injectMathInBlocks(withWikilinks)
+  const withHighlights = injectHighlightsInBlocks(withWikilinks)
+  const withMath = injectMathInBlocks(withHighlights)
   return injectMermaidInBlocks(withMath) as EditorBlocks
 }
 
@@ -287,7 +294,8 @@ function findActiveTab(options: {
 }
 
 function serializeEditorBody(editor: ReturnType<typeof useCreateBlockNote>): string {
-  const restored = restoreWikilinksInBlocks(editor.document)
+  const restoredHighlights = restoreHighlightsInBlocks(editor.document)
+  const restored = restoreWikilinksInBlocks(restoredHighlights)
   return compactMarkdown(serializeMermaidAwareBlocks(editor, restored))
 }
 
