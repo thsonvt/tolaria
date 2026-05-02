@@ -12,6 +12,7 @@ mod migration;
 mod parsing;
 mod rename;
 mod rename_transaction;
+pub mod thoughts;
 mod title_sync;
 mod trash;
 mod views;

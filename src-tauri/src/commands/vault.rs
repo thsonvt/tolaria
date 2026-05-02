@@ -4,6 +4,7 @@ mod frontmatter_cmds;
 mod lifecycle_cmds;
 mod rename_cmds;
 mod scan_cmds;
+mod thought_cmds;
 mod view_cmds;
 
 pub(super) use boundary::VaultBoundary;
@@ -12,13 +13,14 @@ pub use frontmatter_cmds::*;
 pub use lifecycle_cmds::*;
 pub use rename_cmds::*;
 pub use scan_cmds::*;
+pub use thought_cmds::*;
 pub use view_cmds::*;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::vault::ViewDefinition;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     const ACTIVE_VAULT_PATH_ERROR: &str = super::boundary::ACTIVE_VAULT_PATH_ERROR;
     const INVALID_VIEW_FILENAME_ERROR: &str = super::boundary::INVALID_VIEW_FILENAME_ERROR;
@@ -203,6 +205,46 @@ mod tests {
     #[test]
     fn test_save_view_cmd_rejects_windows_invalid_filename() {
         assert_save_view_cmd_rejects_invalid_filename("con.yml");
+    }
+
+    #[test]
+    fn thought_commands_reject_missing_active_vault() {
+        let err = list_thoughts(PathBuf::from("../outside")).unwrap_err();
+        assert_eq!(err, ACTIVE_VAULT_PATH_ERROR);
+    }
+
+    #[test]
+    fn thought_commands_round_trip_inside_requested_vault() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let thought = crate::vault::thoughts::ThoughtRecord {
+            id: "thought-1".to_string(),
+            note_path: "Articles/context.md".to_string(),
+            note_title: "Context".to_string(),
+            anchor: crate::vault::thoughts::ThoughtAnchor::Article,
+            body_markdown: "Whole article note.".to_string(),
+            created_at: "2026-05-03T08:00:00.000Z".to_string(),
+            updated_at: "2026-05-03T08:00:00.000Z".to_string(),
+        };
+
+        save_thought(dir.path().into(), thought.clone()).unwrap();
+        assert_eq!(
+            read_note_thoughts(dir.path().into(), thought.note_path.clone()).unwrap(),
+            vec![thought.clone()]
+        );
+        assert_eq!(
+            list_thoughts(dir.path().into()).unwrap(),
+            vec![thought.clone()]
+        );
+        delete_thought(
+            dir.path().into(),
+            thought.note_path.clone(),
+            thought.id.clone(),
+        )
+        .unwrap();
+        assert_eq!(
+            read_note_thoughts(dir.path().into(), thought.note_path).unwrap(),
+            Vec::new()
+        );
     }
 
     #[test]
