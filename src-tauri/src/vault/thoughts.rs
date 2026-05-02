@@ -162,13 +162,8 @@ pub fn list_thoughts(vault_path: &Path) -> Result<Vec<ThoughtRecord>, String> {
             continue;
         }
 
-        match read_thought_file(&path) {
-            Ok(mut note_thoughts) => thoughts.append(&mut note_thoughts),
-            Err(error) if error.starts_with("Failed to parse thought file") => {
-                log::warn!("{error}");
-            }
-            Err(error) => return Err(error),
-        }
+        let mut note_thoughts = read_thought_file(&path)?;
+        thoughts.append(&mut note_thoughts);
     }
 
     thoughts.sort_by(|left, right| {
@@ -232,13 +227,32 @@ mod tests {
     }
 
     #[test]
-    fn list_thoughts_ignores_malformed_json_but_reports_valid_files() {
+    fn delete_thought_removes_sidecar_when_last_record_is_deleted() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let thought = sample_thought("thought-1", "Only thought in the sidecar.");
+        let sidecar_path = thought_sidecar_path(dir.path(), &thought.note_path).unwrap();
+
+        save_thought(dir.path(), thought.clone()).unwrap();
+        assert!(sidecar_path.exists());
+
+        delete_thought(dir.path(), &thought.note_path, &thought.id).unwrap();
+
+        assert!(!sidecar_path.exists());
+        assert_eq!(
+            read_note_thoughts(dir.path(), &thought.note_path).unwrap(),
+            Vec::new()
+        );
+    }
+
+    #[test]
+    fn list_thoughts_returns_an_error_for_malformed_json() {
         let dir = tempfile::TempDir::new().unwrap();
         let thought = sample_thought("thought-1", "Valid thought.");
         save_thought(dir.path(), thought.clone()).unwrap();
         std::fs::write(dir.path().join(".tolaria/thoughts/bad.json"), "{not-json").unwrap();
 
-        let thoughts = list_thoughts(dir.path()).unwrap();
-        assert_eq!(thoughts, vec![thought]);
+        let err = list_thoughts(dir.path()).unwrap_err();
+        assert!(err.contains("Failed to parse thought file"));
+        assert!(err.contains("bad.json"));
     }
 }
