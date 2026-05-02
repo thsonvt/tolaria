@@ -77,12 +77,12 @@ export function useThoughtsIndex({
 
     const requestId = ++requestIdRef.current
     if (mountedRef.current) {
-      setState({
+      setState((current) => ({
         vaultPath: normalizedVaultPath,
-        thoughts: [],
+        thoughts: current.vaultPath === normalizedVaultPath ? current.thoughts : [],
         loading: true,
         error: null,
-      })
+      }))
     }
 
     try {
@@ -102,19 +102,26 @@ export function useThoughtsIndex({
     } catch (error: unknown) {
       if (!mountedRef.current || requestIdRef.current !== requestId) return
 
-      setState({
+      setState((current) => ({
         vaultPath: normalizedVaultPath,
-        thoughts: [],
+        thoughts: current.vaultPath === normalizedVaultPath ? current.thoughts : [],
         loading: false,
         error: errorMessage(error),
-      })
+      }))
     }
   }, [enabled, normalizedVaultPath])
 
   useEffect(() => {
+    let cancelled = false
+
     queueMicrotask(() => {
+      if (cancelled) return
       void refresh()
     })
+
+    return () => {
+      cancelled = true
+    }
   }, [refresh])
 
   const saveThought = useCallback(async (thought: ThoughtRecord): Promise<ThoughtRecord> => {

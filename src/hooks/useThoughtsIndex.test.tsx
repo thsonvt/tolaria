@@ -418,11 +418,32 @@ describe('useThoughtsIndex', () => {
     expect(result.current.groups[0].thoughts).toEqual([secondThought])
   })
 
-  it('does not update state after unmount when a fetch resolves later', async () => {
-    const pendingLoad = deferred<unknown>()
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+  it('preserves last-known-good thoughts when a same-vault refresh fails', async () => {
+    const existingThought = thought()
 
-    vi.mocked(invoke).mockImplementationOnce(async () => pendingLoad.promise)
+    vi.mocked(invoke)
+      .mockResolvedValueOnce([existingThought])
+      .mockRejectedValueOnce(new Error('temporary outage'))
+
+    const { result } = renderHook(() => useThoughtsIndex({
+      entries: [entry('/vault/alpha.md', 'Alpha')],
+      enabled: true,
+      vaultPath: '/vault',
+    }))
+
+    await waitFor(() => expect(result.current.thoughts).toEqual([existingThought]))
+
+    await act(async () => {
+      await result.current.refresh()
+    })
+
+    expect(result.current.thoughts).toEqual([existingThought])
+    expect(result.current.groups[0].thoughts).toEqual([existingThought])
+    expect(result.current.error).toBe('temporary outage')
+  })
+
+  it('does not invoke list_thoughts after immediate unmount before the deferred effect runs', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const { unmount } = renderHook(() => useThoughtsIndex({
       entries: [entry('/vault/alpha.md', 'Alpha')],
@@ -433,10 +454,10 @@ describe('useThoughtsIndex', () => {
     unmount()
 
     await act(async () => {
-      pendingLoad.resolve([thought()])
-      await pendingLoad.promise
+      await Promise.resolve()
     })
 
+    expect(invoke).not.toHaveBeenCalled()
     expect(consoleError).not.toHaveBeenCalled()
     consoleError.mockRestore()
   })
