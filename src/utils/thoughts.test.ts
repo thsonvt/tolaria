@@ -133,9 +133,12 @@ describe('anchor drafts and matching', () => {
       type: 'selection',
       quote,
       startOffset,
-      prefix: markdown.slice(Math.max(0, startOffset - 80), startOffset),
-      suffix: markdown.slice(startOffset + quote.length, Math.min(markdown.length, startOffset + quote.length + 80)),
     })
+    expect(draft.anchor.type).toBe('selection')
+    if (draft.anchor.type === 'selection') {
+      expect(draft.anchor.prefix).toContain('few-shot examples is always token space.')
+      expect(draft.anchor.suffix).toContain('with information retrieval.')
+    }
   })
 
   it('normalizes selected whitespace and falls back to safe offsets when exact quote is missing', () => {
@@ -171,6 +174,42 @@ describe('anchor drafts and matching', () => {
       startOffset: 0,
       endOffset: 'Missing selection'.length,
     })
+  })
+
+  it('finds the real raw span when the selected quote crosses hard wraps in markdown', () => {
+    const wrappedMarkdown = [
+      '# Wrapped',
+      '',
+      'The trade-off with few-shot examples is always token space.',
+      'Retrieved documents are where',
+      'context engineering    intersects with information retrieval.',
+    ].join('\n')
+    const selectedText = 'Retrieved documents are where context engineering intersects'
+    const rawStartOffset = wrappedMarkdown.indexOf('Retrieved documents are where')
+    const rawEndOffset = wrappedMarkdown.indexOf(' with information retrieval.')
+
+    const draft = createSelectionThoughtDraft({
+      notePath: baseThought.notePath,
+      noteTitle: baseThought.noteTitle,
+      bodyMarkdown: 'Draft body',
+      selectedText,
+      markdown: wrappedMarkdown,
+      now: '2026-05-03T08:00:00.000Z',
+      id: 'thought-wrapped',
+    })
+
+    expect(draft.anchor).toMatchObject({
+      type: 'selection',
+      quote: selectedText,
+      startOffset: rawStartOffset,
+      endOffset: rawEndOffset,
+    })
+    expect(draft.anchor.type).toBe('selection')
+    if (draft.anchor.type === 'selection') {
+      expect(draft.anchor.startOffset).not.toBe(0)
+      expect(draft.anchor.prefix).toContain('few-shot examples is always token space.')
+      expect(draft.anchor.suffix).toContain('with information retrieval.')
+    }
   })
 
   it('creates article anchors when no text is selected', () => {
@@ -216,7 +255,7 @@ describe('anchor drafts and matching', () => {
 
     const moved = `${baseThought.anchor.type === 'selection' ? baseThought.anchor.quote : ''}\n\n${markdown}`
     const fallback = matchThoughtAnchor(baseThought.anchor, moved)
-    expect(fallback?.startOffset).toBe(0)
+    expect(fallback?.startOffset).toBe(moved.lastIndexOf(baseThought.anchor.type === 'selection' ? baseThought.anchor.quote : ''))
   })
 
   it('prefers the stored offsets when the same quote appears multiple times', () => {
@@ -273,6 +312,30 @@ describe('anchor drafts and matching', () => {
     expect(matchThoughtAnchor(anchor, markdownWithScoreOneWinner)).toMatchObject({
       startOffset: markdownWithScoreOneWinner.lastIndexOf(anchor.quote),
       endOffset: markdownWithScoreOneWinner.lastIndexOf(anchor.quote) + anchor.quote.length,
+    })
+  })
+
+  it('breaks equal-score ties by proximity to the stored start offset before earliest occurrence', () => {
+    const quote = 'anchor quote'
+    const equalScoreMarkdown = [
+      'Lead in. anchor quote with no context.',
+      'Spacer line.',
+      'Middle anchor quote still with no context.',
+      'Spacer line.',
+      'Later anchor quote also with no context.',
+    ].join('\n')
+    const laterStartOffset = equalScoreMarkdown.lastIndexOf(quote)
+
+    expect(matchThoughtAnchor({
+      type: 'selection',
+      quote,
+      prefix: 'missing prefix',
+      suffix: 'missing suffix',
+      startOffset: laterStartOffset + 2,
+      endOffset: laterStartOffset + 2 + quote.length,
+    }, equalScoreMarkdown)).toMatchObject({
+      startOffset: laterStartOffset,
+      endOffset: laterStartOffset + quote.length,
     })
   })
 

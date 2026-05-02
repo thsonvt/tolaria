@@ -77,6 +77,62 @@ function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
 }
 
+function normalizeMarkdownWithIndexMap(markdown: string): {
+  normalized: string
+  rawStarts: number[]
+  rawEnds: number[]
+} {
+  const normalizedChars: string[] = []
+  const rawStarts: number[] = []
+  const rawEnds: number[] = []
+
+  let index = 0
+  while (index < markdown.length) {
+    const start = index
+    const char = markdown[index]
+
+    if (/\s/.test(char)) {
+      index += 1
+      while (index < markdown.length && /\s/.test(markdown[index])) {
+        index += 1
+      }
+
+      normalizedChars.push(' ')
+      rawStarts.push(start)
+      rawEnds.push(index)
+      continue
+    }
+
+    normalizedChars.push(char)
+    rawStarts.push(index)
+    rawEnds.push(index + 1)
+    index += 1
+  }
+
+  return {
+    normalized: normalizedChars.join(''),
+    rawStarts,
+    rawEnds,
+  }
+}
+
+function findRawSelectionOffsets(markdown: string, quote: string): {
+  startOffset: number
+  endOffset: number
+} | null {
+  if (!quote) return null
+
+  const normalizedMarkdown = normalizeMarkdownWithIndexMap(markdown)
+  const normalizedStart = normalizedMarkdown.normalized.indexOf(quote)
+  if (normalizedStart < 0) return null
+
+  const normalizedEnd = normalizedStart + quote.length - 1
+  return {
+    startOffset: normalizedMarkdown.rawStarts[normalizedStart],
+    endOffset: normalizedMarkdown.rawEnds[normalizedEnd],
+  }
+}
+
 function normalizeThoughtAnchor(value: unknown): ThoughtAnchor | null {
   if (!isObject(value) || typeof value.type !== 'string') return null
 
@@ -233,9 +289,9 @@ export function filterThoughtGroups(groups: ThoughtGroup[], query: string): Thou
 
 export function createSelectionThoughtDraft(options: SelectionThoughtDraftOptions): ThoughtRecord {
   const quote = normalizeWhitespace(options.selectedText)
-  const exactStartOffset = options.markdown.indexOf(quote)
-  const startOffset = exactStartOffset >= 0 ? exactStartOffset : 0
-  const endOffset = startOffset + quote.length
+  const matchedOffsets = findRawSelectionOffsets(options.markdown, quote)
+  const startOffset = matchedOffsets?.startOffset ?? 0
+  const endOffset = matchedOffsets?.endOffset ?? quote.length
 
   return buildThoughtRecord({
     id: options.id,
@@ -299,6 +355,10 @@ export function matchThoughtAnchor(anchor: ThoughtAnchor, markdown: string): Tho
     const leftScore = selectionContextScore(markdown, left.startOffset, left.endOffset, anchor)
     const rightScore = selectionContextScore(markdown, right.startOffset, right.endOffset, anchor)
     if (leftScore !== rightScore) return rightScore - leftScore
+
+    const leftDistance = Math.abs(left.startOffset - anchor.startOffset)
+    const rightDistance = Math.abs(right.startOffset - anchor.startOffset)
+    if (leftDistance !== rightDistance) return leftDistance - rightDistance
 
     return left.startOffset - right.startOffset
   })[0]
