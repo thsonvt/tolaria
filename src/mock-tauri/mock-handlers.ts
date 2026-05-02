@@ -14,6 +14,7 @@ import type {
   LastCommitInfo,
   PulseCommit,
 } from '../types'
+import type { ThoughtRecord } from '../utils/thoughts'
 import { MOCK_CONTENT } from './mock-content'
 import { MOCK_ENTRIES } from './mock-entries'
 
@@ -99,6 +100,7 @@ index abc1234..${shortHash} 100644
 
 let mockHasChanges = true
 const mockSavedSinceCommit = new Set<string>()
+let mockThoughts: ThoughtRecord[] = []
 
 let mockSettings: Settings = {
   auto_pull_interval_minutes: 5,
@@ -321,6 +323,27 @@ export const mockHandlers: Record<string, (args: any) => any> = {
   reload_vault_entry: (args: { path: string }) => MOCK_ENTRIES.find(e => e.path === args.path) ?? { path: args.path, title: 'Unknown', filename: 'unknown.md', aliases: [], belongsTo: [], relatedTo: [], archived: false, snippet: '', wordCount: 0, fileSize: 0, relationships: {}, outgoingLinks: [], properties: {} },
   sync_note_title: () => false,
   get_note_content: (args: { path: string }) => MOCK_CONTENT[args.path] ?? '',
+  list_thoughts: () => mockThoughts,
+  read_note_thoughts: (args: { notePath: string }) => (
+    mockThoughts.filter((thought) => thought.notePath === args.notePath)
+  ),
+  save_thought: (args: { thought: ThoughtRecord }) => {
+    mockThoughts = [
+      ...mockThoughts.filter((thought) => thought.id !== args.thought.id),
+      args.thought,
+    ]
+    return args.thought
+  },
+  delete_thought: (args: { notePath: string; thoughtId: string }) => {
+    mockThoughts = mockThoughts.filter((thought) => !(
+      thought.notePath === args.notePath && thought.id === args.thoughtId
+    ))
+    return null
+  },
+  __reset_thoughts_for_tests: () => {
+    mockThoughts = []
+    return null
+  },
   get_all_content: () => MOCK_CONTENT,
   get_file_history: (args: { path: string }) => mockFileHistory(args.path),
   get_modified_files: () => {
