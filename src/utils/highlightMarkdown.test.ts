@@ -256,6 +256,22 @@ describe('highlight Markdown preprocessing', () => {
     expect(preProcessHighlightMarkdown('$==x==$')).toBe('$==x==$')
   })
 
+  it('does not rewrite highlight markers inside single-line display math', () => {
+    expect(preProcessHighlightMarkdown('$$==x==$$')).toBe('$$==x==$$')
+  })
+
+  it('does not rewrite highlight markers inside multiline display math blocks', () => {
+    expect(preProcessHighlightMarkdown('$$\n==x==\n$$')).toBe('$$\n==x==\n$$')
+  })
+
+  it('does not rewrite highlight markers inside double-backtick code spans', () => {
+    expect(preProcessHighlightMarkdown('``==x==``')).toBe('``==x==``')
+  })
+
+  it('does not rewrite highlight markers inside triple-backtick inline code spans', () => {
+    expect(preProcessHighlightMarkdown('```==x==```')).toBe('```==x==```')
+  })
+
   it('does not reinterpret the old printable marker text as a highlight', () => {
     const injected = injectHighlightsInBlocks([
       {

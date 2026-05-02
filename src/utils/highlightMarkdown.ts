@@ -102,6 +102,10 @@ function isSingleDollar(text: string, index: number): boolean {
   return text[index] === '$' && text[index - 1] !== '$' && text[index + 1] !== '$'
 }
 
+function isDoubleDollar(text: string, index: number): boolean {
+  return text[index] === '$' && text[index + 1] === '$'
+}
+
 function findInlineMathEnd(text: string, start: number): number {
   for (let index = start + 1; index < text.length; index += 1) {
     if (isSingleDollar(text, index) && !isEscaped(text, index)) {
@@ -119,6 +123,25 @@ function readInlineMath(text: string, index: number): { end: number } | null {
   const latex = text.slice(index + 1, end)
   if (!latex.trim() || /^\s|\s$/.test(latex)) return null
   return { end }
+}
+
+function readInlineDisplayMath(text: string, index: number): { end: number } | null {
+  if (!isDoubleDollar(text, index) || isEscaped(text, index)) return null
+
+  for (let current = index + 2; current < text.length - 1; current += 1) {
+    if (isDoubleDollar(text, current) && !isEscaped(text, current)) {
+      return { end: current + 1 }
+    }
+  }
+
+  return null
+}
+
+function readBacktickRun(text: string, index: number): string | null {
+  if (text[index] !== '`') return null
+  let current = index
+  while (text[current] === '`') current += 1
+  return text.slice(index, current)
 }
 
 function readBalancedHighlight(markdown: string, start: number): {
@@ -233,8 +256,11 @@ export function preProcessHighlightMarkdown(markdown: string): string {
   const lines = markdown.split('\n')
   const result: string[] = []
   let inFence = false
+  let inDisplayMathBlock = false
+  let activeCodeSpanDelimiter: string | null = null
 
-  for (const line of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex]
     if (isCodeFence(line)) {
       inFence = !inFence
       result.push(line)
@@ -246,37 +272,70 @@ export function preProcessHighlightMarkdown(markdown: string): string {
       continue
     }
 
+    if (inDisplayMathBlock) {
+      result.push(line)
+      if (line.trim() === '$$') {
+        inDisplayMathBlock = false
+      }
+      continue
+    }
+
+    if (line.trim() === '$$') {
+      inDisplayMathBlock = true
+      result.push(line)
+      continue
+    }
+
     let processed = ''
     let index = 0
-    let inCodeSpan = false
 
     while (index < line.length) {
       const char = line[index]
-      if (char === '`') {
-        inCodeSpan = !inCodeSpan
-        processed += char
-        index += 1
+
+      if (activeCodeSpanDelimiter) {
+        const closeIndex = line.indexOf(activeCodeSpanDelimiter, index)
+        if (closeIndex === -1) {
+          processed += line.slice(index)
+          index = line.length
+        } else {
+          processed += line.slice(index, closeIndex + activeCodeSpanDelimiter.length)
+          index = closeIndex + activeCodeSpanDelimiter.length
+          activeCodeSpanDelimiter = null
+        }
         continue
       }
 
-      if (!inCodeSpan) {
-        const inlineMath = readInlineMath(line, index)
-        if (inlineMath) {
-          processed += line.slice(index, inlineMath.end + 1)
-          index = inlineMath.end + 1
-          continue
-        }
+      const backtickRun = readBacktickRun(line, index)
+      if (backtickRun) {
+        processed += backtickRun
+        index += backtickRun.length
+        activeCodeSpanDelimiter = backtickRun
+        continue
+      }
 
-        const highlight = readBalancedHighlight(line, index)
-        if (highlight) {
-          if (normalizeExcerpt(highlight.rawText).length === 0) {
-            processed += line.slice(index, highlight.closeOffset + 2)
-          } else {
-            processed += `${HIGHLIGHT_OPEN_SENTINEL}${highlight.rawText}${HIGHLIGHT_CLOSE_SENTINEL}`
-          }
-          index = highlight.closeOffset + 2
-          continue
+      const displayMath = readInlineDisplayMath(line, index)
+      if (displayMath) {
+        processed += line.slice(index, displayMath.end + 1)
+        index = displayMath.end + 1
+        continue
+      }
+
+      const inlineMath = readInlineMath(line, index)
+      if (inlineMath) {
+        processed += line.slice(index, inlineMath.end + 1)
+        index = inlineMath.end + 1
+        continue
+      }
+
+      const highlight = readBalancedHighlight(line, index)
+      if (highlight) {
+        if (normalizeExcerpt(highlight.rawText).length === 0) {
+          processed += line.slice(index, highlight.closeOffset + 2)
+        } else {
+          processed += `${HIGHLIGHT_OPEN_SENTINEL}${highlight.rawText}${HIGHLIGHT_CLOSE_SENTINEL}`
         }
+        index = highlight.closeOffset + 2
+        continue
       }
 
       processed += char
