@@ -141,7 +141,7 @@ export interface SearchResponse {
   mode: string
 }
 
-export type SearchMode = 'keyword' | 'semantic' | 'hybrid'
+export type SearchMode = 'keyword' | 'semantic'
 
 /** Vault-scoped UI configuration stored locally per vault path. */
 export interface InboxConfig {

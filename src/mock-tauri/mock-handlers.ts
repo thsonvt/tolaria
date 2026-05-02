@@ -114,6 +114,7 @@ let mockSettings: Settings = {
   theme_mode: null,
   ui_language: null,
   default_ai_agent: 'claude_code',
+  semantic_search_enabled: null,
 }
 
 const DEFAULT_MOCK_VAULT_PATH = '/Users/mock/demo-vault-v2'
@@ -427,6 +428,7 @@ export const mockHandlers: Record<string, (args: any) => any> = {
       theme_mode: s.theme_mode ?? null,
       ui_language: s.ui_language ?? null,
       default_ai_agent: s.default_ai_agent ?? null,
+      semantic_search_enabled: s.semantic_search_enabled ?? null,
     }
     return null
   },
@@ -470,6 +472,28 @@ export const mockHandlers: Record<string, (args: any) => any> = {
       }))
     return { results: matches, elapsed_ms: 42, query: q, mode: args.mode }
   },
+  semantic_index_status: () => ({
+    enabled: false,
+    model_ready: false,
+    index_state: 'disabled',
+    indexed_notes: 0,
+    total_notes: 0,
+    message: null,
+  }),
+  rebuild_semantic_index: () => ({
+    enabled: true,
+    model_ready: true,
+    index_state: 'ready',
+    indexed_notes: 0,
+    total_notes: 0,
+    message: null,
+  }),
+  search_vault_semantic: (args: { query?: string }) => ({
+    results: [],
+    elapsed_ms: 0,
+    query: args.query ?? '',
+    mode: 'semantic',
+  }),
   get_last_vault_path: () => mockLastVaultPath,
   set_last_vault_path: (args: { path: string }) => { mockLastVaultPath = args.path; return null },
   get_default_vault_path: () => '/Users/mock/Documents/Getting Started',
