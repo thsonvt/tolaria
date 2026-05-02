@@ -59,6 +59,22 @@ describe('normalizeThoughtRecord', () => {
       ...baseThought,
       anchor: { ...baseThought.anchor, endOffset: baseThought.anchor.startOffset },
     })).toBeNull()
+    expect(normalizeThoughtRecord({
+      id: baseThought.id,
+      note_path: baseThought.notePath,
+      note_title: baseThought.noteTitle,
+      anchor: {
+        type: 'selection',
+        quote: baseThought.anchor.type === 'selection' ? baseThought.anchor.quote : '',
+        prefix: baseThought.anchor.type === 'selection' ? baseThought.anchor.prefix : '',
+        suffix: baseThought.anchor.type === 'selection' ? baseThought.anchor.suffix : '',
+        start_offset: baseThought.anchor.type === 'selection' ? baseThought.anchor.startOffset : 0,
+        end_offset: baseThought.anchor.type === 'selection' ? baseThought.anchor.endOffset : 0,
+      },
+      body_markdown: baseThought.bodyMarkdown,
+      created_at: baseThought.createdAt,
+      updated_at: baseThought.updatedAt,
+    })).toBeNull()
   })
 })
 
@@ -201,6 +217,30 @@ describe('anchor drafts and matching', () => {
     const moved = `${baseThought.anchor.type === 'selection' ? baseThought.anchor.quote : ''}\n\n${markdown}`
     const fallback = matchThoughtAnchor(baseThought.anchor, moved)
     expect(fallback?.startOffset).toBe(0)
+  })
+
+  it('prefers the stored offsets when the same quote appears multiple times', () => {
+    const quote = 'Repeated quote'
+    const duplicateMarkdown = [
+      'Intro Repeated quote first mention.',
+      'Spacer line.',
+      'Target Repeated quote second mention.',
+    ].join('\n')
+    const secondStartOffset = duplicateMarkdown.lastIndexOf(quote)
+    const secondEndOffset = secondStartOffset + quote.length
+
+    expect(matchThoughtAnchor({
+      type: 'selection',
+      quote,
+      prefix: duplicateMarkdown.slice(Math.max(0, secondStartOffset - 80), secondStartOffset),
+      suffix: duplicateMarkdown.slice(secondEndOffset, Math.min(duplicateMarkdown.length, secondEndOffset + 80)),
+      startOffset: secondStartOffset,
+      endOffset: secondEndOffset,
+    }, duplicateMarkdown)).toMatchObject({
+      quote,
+      startOffset: secondStartOffset,
+      endOffset: secondEndOffset,
+    })
   })
 
   it('prefers the best prefix and suffix context score across multiple quote matches', () => {
