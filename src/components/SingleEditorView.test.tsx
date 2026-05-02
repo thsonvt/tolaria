@@ -57,6 +57,11 @@ vi.mock('@blocknote/react', () => ({
         className={className}
         {...restProps}
       >
+        <div
+          contentEditable={editable !== false}
+          data-testid="blocknote-editable"
+          suppressContentEditableWarning
+        />
         {children}
       </div>
     )
@@ -704,7 +709,8 @@ describe('SingleEditorView', () => {
   })
 
   it('toggles persistent highlight from the editor shortcut when editable', () => {
-    const { container, editor } = renderEditorHarness()
+    const { editor } = renderEditorHarness()
+    const editableSurface = screen.getByTestId('blocknote-editable')
     const event = new KeyboardEvent('keydown', {
       bubbles: true,
       cancelable: true,
@@ -713,9 +719,79 @@ describe('SingleEditorView', () => {
       shiftKey: true,
     })
 
-    container.dispatchEvent(event)
+    editableSurface.dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(true)
+    expect(editor.focus).toHaveBeenCalled()
+    expect(editor.toggleStyles).toHaveBeenCalledWith({ highlight: true })
+  })
+
+  it('toggles persistent highlight when bubbling is stopped below the editable surface', () => {
+    const { editor } = renderEditorHarness()
+    const editableSurface = screen.getByTestId('blocknote-editable')
+    const nestedInline = document.createElement('span')
+    editableSurface.appendChild(nestedInline)
+    nestedInline.addEventListener('keydown', (event) => {
+      event.stopPropagation()
+    })
+
+    const event = new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 'h',
+      metaKey: true,
+      shiftKey: true,
+    })
+
+    nestedInline.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(editor.focus).toHaveBeenCalled()
+    expect(editor.toggleStyles).toHaveBeenCalledWith({ highlight: true })
+  })
+
+  it('does not toggle persistent highlight from toolbar or dialog descendants in the editor container', () => {
+    const { container, editor } = renderEditorHarness()
+    const toolbarInput = document.createElement('input')
+    const linkToolbar = document.createElement('div')
+    linkToolbar.className = 'bn-link-toolbar'
+    linkToolbar.appendChild(toolbarInput)
+    container.appendChild(linkToolbar)
+
+    const dialogInput = document.createElement('input')
+    const dialog = document.createElement('div')
+    dialog.setAttribute('role', 'dialog')
+    dialog.appendChild(dialogInput)
+    container.appendChild(dialog)
+
+    fireEvent.keyDown(toolbarInput, {
+      key: 'h',
+      code: 'KeyH',
+      metaKey: true,
+      shiftKey: true,
+    })
+    fireEvent.keyDown(dialogInput, {
+      key: 'h',
+      code: 'KeyH',
+      ctrlKey: true,
+      shiftKey: true,
+    })
+
+    expect(editor.focus).not.toHaveBeenCalled()
+    expect(editor.toggleStyles).not.toHaveBeenCalled()
+  })
+
+  it('toggles persistent highlight when the keyboard event code is KeyH on non-h layouts', () => {
+    const { editor } = renderEditorHarness()
+    const editableSurface = screen.getByTestId('blocknote-editable')
+
+    fireEvent.keyDown(editableSurface, {
+      key: 'ø',
+      code: 'KeyH',
+      metaKey: true,
+      shiftKey: true,
+    })
+
     expect(editor.focus).toHaveBeenCalled()
     expect(editor.toggleStyles).toHaveBeenCalledWith({ highlight: true })
   })
@@ -732,9 +808,6 @@ describe('SingleEditorView', () => {
       />,
     )
 
-    const container = screen.getByTestId('blocknote-view').closest('.editor__blocknote-container')
-    expect(container).toBeTruthy()
-
     const event = new KeyboardEvent('keydown', {
       bubbles: true,
       cancelable: true,
@@ -743,7 +816,7 @@ describe('SingleEditorView', () => {
       shiftKey: true,
     })
 
-    container!.dispatchEvent(event)
+    screen.getByTestId('blocknote-view').dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(false)
     expect(editor.focus).not.toHaveBeenCalled()

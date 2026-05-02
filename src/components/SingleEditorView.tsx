@@ -62,6 +62,19 @@ const TOOLBAR_MOUSE_DOWN_ALLOW_SELECTOR = [
   'textarea',
   '[contenteditable="true"]',
 ].join(', ')
+const EDITOR_EDITABLE_SELECTOR = '[contenteditable="true"]'
+const EDITOR_SHORTCUT_IGNORE_SELECTOR = [
+  '.bn-formatting-toolbar',
+  '.bn-link-toolbar',
+  '.bn-side-menu',
+  '.bn-form-popover',
+  '[role="menu"]',
+  '[role="dialog"]',
+  'button',
+  'input',
+  'select',
+  'textarea',
+].join(', ')
 
 type TestTableBlock = {
   type?: string
@@ -163,7 +176,7 @@ function handleToolbarMouseDownCapture(
 function isHighlightShortcut(event: KeyboardEvent | React.KeyboardEvent) {
   return (event.metaKey || event.ctrlKey)
     && event.shiftKey
-    && event.key.toLowerCase() === 'h'
+    && (event.key.toLowerCase() === 'h' || event.code === 'KeyH')
 }
 
 function TolariaOpenLinkButton({ url }: Pick<LinkToolbarProps, 'url'>) {
@@ -443,6 +456,38 @@ function useCompositionAwareEditorChange(options: {
   }, [])
 }
 
+function findHighlightShortcutSurface(options: {
+  container: HTMLElement
+  editor: ReturnType<typeof useCreateBlockNote>
+}) {
+  const { container, editor } = options
+  const editorElement = editor.domElement
+
+  if (editorElement instanceof HTMLElement && editorElement.isConnected && container.contains(editorElement)) {
+    if (editorElement.matches(EDITOR_EDITABLE_SELECTOR)) {
+      return editorElement
+    }
+
+    const editableDescendant = editorElement.querySelector<HTMLElement>(EDITOR_EDITABLE_SELECTOR)
+    if (editableDescendant) return editableDescendant
+  }
+
+  return container.querySelector<HTMLElement>(EDITOR_EDITABLE_SELECTOR)
+}
+
+function shouldIgnoreHighlightShortcutTarget(options: {
+  editableSurface: HTMLElement
+  target: EventTarget | null
+}) {
+  const { editableSurface, target } = options
+  if (!(target instanceof Node)) return true
+
+  const targetElement = nodeElement(target)
+  if (!targetElement || !editableSurface.contains(targetElement)) return true
+
+  return Boolean(targetElement.closest(EDITOR_SHORTCUT_IGNORE_SELECTOR))
+}
+
 function useEditorHighlightShortcut(options: {
   containerRef: React.RefObject<HTMLDivElement | null>
   editable: boolean
@@ -455,18 +500,25 @@ function useEditorHighlightShortcut(options: {
 
     const container = containerRef.current
     if (!container) return
+    const editableSurface = findHighlightShortcutSurface({ container, editor })
+    if (!editableSurface) return
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return
       if (!isHighlightShortcut(event)) return
+      if (shouldIgnoreHighlightShortcutTarget({
+        editableSurface,
+        target: event.target,
+      })) return
 
       event.preventDefault()
       editor.focus()
       editor.toggleStyles({ highlight: true } as never)
     }
 
-    container.addEventListener('keydown', handleKeyDown)
+    editableSurface.addEventListener('keydown', handleKeyDown, true)
     return () => {
-      container.removeEventListener('keydown', handleKeyDown)
+      editableSurface.removeEventListener('keydown', handleKeyDown, true)
     }
   }, [containerRef, editable, editor])
 }
