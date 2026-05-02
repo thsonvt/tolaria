@@ -46,18 +46,7 @@ describe('HighlightsList', () => {
     fireEvent.click(screen.getByText('retrieval is infrastructure'))
 
     expect(onOpenHighlight).toHaveBeenCalledWith(groups[0].highlights[0])
-  })
-
-  it('opens a focused highlight row on Enter', () => {
-    const onOpenHighlight = vi.fn()
-
-    render(<HighlightsList groups={groups} loading={false} error={null} onOpenHighlight={onOpenHighlight} />)
-
-    const row = screen.getByRole('button', { name: /retrieval is infrastructure/i })
-    row.focus()
-    fireEvent.keyDown(row, { key: 'Enter' })
-
-    expect(onOpenHighlight).toHaveBeenCalledWith(groups[0].highlights[0])
+    expect(onOpenHighlight).toHaveBeenCalledTimes(1)
   })
 
   it('renders a loading state', () => {

@@ -166,10 +166,7 @@ export function useHighlightsIndex({
     [indexableEntries, openTabContentByPath],
   )
   const relevantOpenTabContentKey = relevantOpenTabSnapshot.key
-  const relevantOpenTabContentByPath = useMemo(
-    () => relevantOpenTabSnapshot.contentByPath,
-    [relevantOpenTabContentKey],
-  )
+  const relevantOpenTabContentByPath = relevantOpenTabSnapshot.contentByPath
   const entryDescriptors = useMemo(
     () => buildEntryDescriptors(indexableEntries, relevantOpenTabContentByPath),
     [indexableEntries, relevantOpenTabContentByPath],
@@ -182,7 +179,6 @@ export function useHighlightsIndex({
     if (!enabled) {
       cacheRef.current.clear()
       metaRef.current = null
-      setState(EMPTY_STATE)
       return
     }
 
@@ -271,7 +267,7 @@ export function useHighlightsIndex({
     }
   }, [enabled, entryDescriptors, normalizedVaultPath, relevantOpenTabContentKey])
 
-  return state
+  return enabled ? state : EMPTY_STATE
 }
 
 export { filterHighlightGroups }

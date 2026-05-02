@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { NoteList } from './components/NoteList'
 import type { DeletedNoteEntry } from './components/note-list/noteListUtils'
-import type { HighlightExcerpt } from './hooks/useHighlightsIndex'
 import { Editor } from './components/Editor'
 import { ResizeHandle } from './components/ResizeHandle'
 import { CreateTypeDialog } from './components/CreateTypeDialog'
@@ -1507,7 +1506,7 @@ function App() {
     () => Object.fromEntries(notes.tabs.map((tab) => [tab.entry.path, tab.content])),
     [notes.tabs],
   )
-  const handleOpenHighlight = useCallback((_highlight: HighlightExcerpt) => {}, [])
+  const handleOpenHighlight = useCallback(() => {}, [])
 
   const inboxCount = useMemo(() => filterInboxEntries(vault.entries, inboxPeriod).length, [vault.entries, inboxPeriod])
 
