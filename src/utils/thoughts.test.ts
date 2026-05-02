@@ -75,6 +75,14 @@ describe('normalizeThoughtRecord', () => {
       created_at: baseThought.createdAt,
       updated_at: baseThought.updatedAt,
     })).toBeNull()
+    expect(normalizeThoughtRecord({
+      ...baseThought,
+      note_path: baseThought.notePath,
+      anchor: {
+        ...baseThought.anchor,
+        start_offset: baseThought.anchor.type === 'selection' ? baseThought.anchor.startOffset : 0,
+      },
+    })).toBeNull()
   })
 })
 

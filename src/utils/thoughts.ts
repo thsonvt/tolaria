@@ -65,6 +65,10 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+function hasOwnKey(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key)
+}
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
 }
@@ -75,6 +79,23 @@ function isFiniteNumber(value: unknown): value is number {
 
 function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
+}
+
+function hasKnownSnakeCaseThoughtKeys(value: Record<string, unknown>): boolean {
+  return [
+    'note_path',
+    'note_title',
+    'body_markdown',
+    'created_at',
+    'updated_at',
+  ].some((key) => hasOwnKey(value, key))
+}
+
+function hasKnownSnakeCaseAnchorKeys(value: Record<string, unknown>): boolean {
+  return [
+    'start_offset',
+    'end_offset',
+  ].some((key) => hasOwnKey(value, key))
 }
 
 function normalizeMarkdownWithIndexMap(markdown: string): {
@@ -135,6 +156,7 @@ function findRawSelectionOffsets(markdown: string, quote: string): {
 
 function normalizeThoughtAnchor(value: unknown): ThoughtAnchor | null {
   if (!isObject(value) || typeof value.type !== 'string') return null
+  if (hasKnownSnakeCaseAnchorKeys(value)) return null
 
   if (value.type === 'article') {
     return { type: 'article' }
@@ -216,6 +238,7 @@ function selectionContextScore(
 
 export function normalizeThoughtRecord(value: unknown): ThoughtRecord | null {
   if (!isObject(value)) return null
+  if (hasKnownSnakeCaseThoughtKeys(value)) return null
 
   const anchor = normalizeThoughtAnchor(value.anchor)
   if (!anchor) return null
