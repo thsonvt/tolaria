@@ -46,7 +46,11 @@ pub fn chunk_note(note: &SemanticNoteInput, max_words: usize) -> Vec<SemanticChu
 
 fn metadata_header(note: &SemanticNoteInput) -> String {
     let mut parts = vec![format!("Title: {}", note.title)];
-    if let Some(note_type) = note.note_type.as_deref().filter(|value| !value.trim().is_empty()) {
+    if let Some(note_type) = note
+        .note_type
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
         parts.push(format!("Type: {note_type}"));
     }
     if !note.aliases.is_empty() {

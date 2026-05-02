@@ -96,7 +96,11 @@ pub fn build_and_query_with_embedder(
             })
             .collect::<Vec<_>>();
 
-        index.upsert_note(&note.path, &sha256_hex(note.content.as_bytes()), chunk_records);
+        index.upsert_note(
+            &note.path,
+            &sha256_hex(note.content.as_bytes()),
+            chunk_records,
+        );
     }
 
     let query_embedding = embedder.embed_query(query)?;
