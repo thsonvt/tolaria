@@ -8,6 +8,8 @@ import { installFixtureVaultDesktopBridgeInBrowser } from '../helpers/fixtureVau
 const DEMO_VAULT_PATH = path.resolve(process.cwd(), 'demo-vault-v2')
 const NOTE_TITLE = 'Writing for Clarity vs. Writing for Credit'
 const NOTE_FILENAME = 'writing-for-clarity-vs-writing-for-credit.md'
+const OTHER_NOTE_TITLE = 'Writing Weekly Rhythm'
+const OTHER_NOTE_FILENAME = 'writing-weekly-rhythm.md'
 const READY_TITLE = NOTE_TITLE
 const HIGHLIGHT_PHRASE = 'understood before you write'
 const HIGHLIGHT_FILTER_QUERY = 'understood'
@@ -43,6 +45,13 @@ function removeDemoVaultCopy(vaultPath: string | undefined): void {
 async function openNote(page: Page, title: string) {
   await page.getByTestId('note-list-container').getByText(title, { exact: true }).click()
   await expect(page.locator('.bn-editor')).toBeVisible({ timeout: 5_000 })
+}
+
+async function expectOpenNote(page: Page, filenameStem: string, title: string) {
+  await expect(page.getByTestId('breadcrumb-filename-trigger')).toContainText(filenameStem, {
+    timeout: 5_000,
+  })
+  await expect(page.locator('.bn-editor').getByRole('heading', { level: 1, name: title })).toBeVisible()
 }
 
 async function installDesktopBridge(page: Page) {
@@ -109,7 +118,12 @@ test('persistent highlights survive reloads and open from the highlights collect
   await expect(page.getByTestId('note-list-container')).toBeVisible({ timeout: 10_000 })
 
   await openNote(page, NOTE_TITLE)
+  await expectOpenNote(page, NOTE_FILENAME.replace(/\.md$/, ''), NOTE_TITLE)
   await expect(page.locator('.tolaria-highlight').filter({ hasText: HIGHLIGHT_PHRASE })).toBeVisible()
+
+  await openNote(page, OTHER_NOTE_TITLE)
+  await expectOpenNote(page, OTHER_NOTE_FILENAME.replace(/\.md$/, ''), OTHER_NOTE_TITLE)
+  await expect(page.locator('.tolaria-highlight').filter({ hasText: HIGHLIGHT_PHRASE })).toHaveCount(0)
 
   await page.getByTestId('sidebar-top-nav').getByText('Highlights', { exact: true }).click()
   await expect(page.getByPlaceholder('Filter highlights')).toBeVisible()
@@ -119,9 +133,6 @@ test('persistent highlights survive reloads and open from the highlights collect
   await expect(highlightResult).toBeVisible()
   await highlightResult.click()
 
-  await expect(page.getByTestId('breadcrumb-filename-trigger')).toContainText(
-    NOTE_FILENAME.replace(/\.md$/, ''),
-    { timeout: 5_000 },
-  )
+  await expectOpenNote(page, NOTE_FILENAME.replace(/\.md$/, ''), NOTE_TITLE)
   await expect(page.locator('.tolaria-highlight').filter({ hasText: HIGHLIGHT_PHRASE })).toBeVisible()
 })
