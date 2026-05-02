@@ -155,6 +155,18 @@ describe('NoteList rendering', () => {
       openTabContentByPath: {
         '/vault/highlights.md': '# Highlights Source\n\n==retrieval is infrastructure==',
       },
+      highlightGroups: [{
+        notePath: '/vault/highlights.md',
+        noteTitle: 'Highlights Source',
+        highlights: [{
+          id: 'highlight-1',
+          notePath: '/vault/highlights.md',
+          noteTitle: 'Highlights Source',
+          excerpt: 'retrieval is infrastructure',
+          startOffset: 21,
+          endOffset: 46,
+        }],
+      }],
       onOpenHighlight,
     })
 
