@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChunkRecord {
@@ -49,6 +50,19 @@ impl SemanticIndex {
     }
 }
 
+pub fn semantic_index_path(cache_root: &Path, vault_path: &Path) -> PathBuf {
+    cache_root
+        .join(vault_path_hash(vault_path))
+        .join("semantic")
+        .join("index.bin")
+}
+
+fn vault_path_hash(vault_path: &Path) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    vault_path.to_string_lossy().as_ref().hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
 pub fn save_index(path: &Path, index: &SemanticIndex) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
@@ -69,6 +83,7 @@ pub fn load_index(path: &Path) -> Result<SemanticIndex, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     fn record(path: &str, chunk: usize) -> ChunkRecord {
         ChunkRecord {
@@ -123,5 +138,17 @@ mod tests {
         let loaded = load_index(&path).unwrap();
 
         assert_eq!(loaded, index);
+    }
+
+    #[test]
+    fn semantic_cache_path_is_outside_vault() {
+        let cache_root = PathBuf::from("/tmp/laputa-cache");
+        let vault = PathBuf::from("/Users/me/Vault");
+
+        let path = semantic_index_path(&cache_root, &vault);
+
+        assert!(path.starts_with("/tmp/laputa-cache"));
+        assert!(path.ends_with("semantic/index.bin"));
+        assert!(!path.starts_with(&vault));
     }
 }
