@@ -92,14 +92,22 @@ describe('useThoughtsIndex', () => {
       noteTitle: 'Beta',
       bodyMarkdown: 'Second thought',
     })
+    const rawAlphaThought: unknown = {
+      ...alphaThought,
+      anchor: { type: 'article' },
+    }
+    const rawBetaThought: unknown = {
+      ...betaThought,
+      anchor: { type: 'article' },
+    }
     const entries = [
       entry('/vault/alpha.md', 'Alpha'),
       entry('/vault/beta.md', 'Beta'),
     ]
 
     vi.mocked(invoke).mockResolvedValueOnce([
-      betaThought,
-      alphaThought,
+      rawBetaThought,
+      rawAlphaThought,
     ])
 
     const { result } = renderHook(() => useThoughtsIndex({
