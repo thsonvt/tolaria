@@ -355,14 +355,19 @@ describe('useHighlightsIndex', () => {
       entry('/vault/open.md', 'Open'),
       entry('/vault/closed.md', 'Closed'),
     ]
+    const loadingStates: boolean[] = []
 
     const { result, rerender } = renderHook(
-      ({ openTabContentByPath }) => useHighlightsIndex({
-        entries,
-        enabled: true,
-        vaultPath: '/vault',
-        openTabContentByPath,
-      }),
+      ({ openTabContentByPath }) => {
+        const state = useHighlightsIndex({
+          entries,
+          enabled: true,
+          vaultPath: '/vault',
+          openTabContentByPath,
+        })
+        loadingStates.push(state.loading)
+        return state
+      },
       {
         initialProps: {
           openTabContentByPath: {
@@ -381,6 +386,7 @@ describe('useHighlightsIndex', () => {
     ])
     expect(result.current.groups[0].highlights[0].excerpt).toBe('first')
     expect(result.current.groups[1].highlights[0].excerpt).toBe('closed')
+    const settledLoadingStateCount = loadingStates.length
 
     rerender({
       openTabContentByPath: {
@@ -388,7 +394,7 @@ describe('useHighlightsIndex', () => {
       },
     })
 
-    await waitFor(() => expect(result.current.loading).toBe(false))
+    await waitFor(() => expect(result.current.groups[0].highlights[0].excerpt).toBe('second'))
 
     expect(invokeMock).toHaveBeenCalledTimes(1)
     expect(result.current.groups.map((group) => group.notePath)).toEqual([
@@ -397,5 +403,6 @@ describe('useHighlightsIndex', () => {
     ])
     expect(result.current.groups[0].highlights[0].excerpt).toBe('second')
     expect(result.current.groups[1].highlights[0].excerpt).toBe('closed')
+    expect(loadingStates.slice(settledLoadingStateCount)).not.toContain(true)
   })
 })
