@@ -171,6 +171,7 @@ describe('mockHandlers coverage', () => {
       theme_mode: null,
       ui_language: 'zh-CN',
       default_ai_agent: 'codex',
+      semantic_search_enabled: null,
     })
 
     const list = {
