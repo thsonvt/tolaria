@@ -85,7 +85,17 @@ describe('useThoughtsIndex', () => {
   })
 
   it('loads thoughts, normalizes them, and groups by entry order', async () => {
-    const alphaThought = thought()
+    const alphaThought = thought({
+      anchor: {
+        type: 'selection',
+        quote: 'Alpha quote',
+        prefix: 'Before ',
+        suffix: ' after',
+        startOffset: 7,
+        endOffset: 18,
+      },
+      bodyMarkdown: 'Normalized alpha thought',
+    })
     const betaThought = thought({
       id: 'thought-2',
       notePath: '/vault/beta.md',
@@ -93,12 +103,29 @@ describe('useThoughtsIndex', () => {
       bodyMarkdown: 'Second thought',
     })
     const rawAlphaThought: unknown = {
-      ...alphaThought,
-      anchor: { type: 'article' },
+      id: 'thought-1',
+      notePath: '/vault/alpha.md',
+      noteTitle: 'Alpha',
+      anchor: {
+        type: 'selection',
+        quote: 'Alpha quote',
+        prefix: 'Before ',
+        suffix: ' after',
+        startOffset: 7,
+        endOffset: 18,
+      },
+      bodyMarkdown: 'Normalized alpha thought',
+      createdAt: '2026-05-03T10:00:00.000Z',
+      updatedAt: '2026-05-03T10:00:00.000Z',
     }
     const rawBetaThought: unknown = {
-      ...betaThought,
+      id: 'thought-2',
+      notePath: '/vault/beta.md',
+      noteTitle: 'Beta',
       anchor: { type: 'article' },
+      bodyMarkdown: 'Second thought',
+      createdAt: '2026-05-03T10:00:00.000Z',
+      updatedAt: '2026-05-03T10:00:00.000Z',
     }
     const entries = [
       entry('/vault/alpha.md', 'Alpha'),
