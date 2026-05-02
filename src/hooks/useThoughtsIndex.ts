@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { VaultEntry } from '../types'
 import {
@@ -14,21 +14,22 @@ interface UseThoughtsIndexOptions {
   vaultPath?: string | null
 }
 
-interface ThoughtsIndexState {
-  groups: ThoughtGroup[]
+interface ThoughtsFetchState {
+  vaultPath: string | null
   thoughts: ThoughtRecord[]
   loading: boolean
   error: string | null
 }
 
-interface UseThoughtsIndexResult extends ThoughtsIndexState {
+interface UseThoughtsIndexResult extends ThoughtsFetchState {
+  groups: ThoughtGroup[]
   refresh: () => Promise<void>
   saveThought: (thought: ThoughtRecord) => Promise<ThoughtRecord>
   deleteThought: (thought: ThoughtRecord) => Promise<void>
 }
 
-const EMPTY_STATE: ThoughtsIndexState = {
-  groups: [],
+const EMPTY_STATE: ThoughtsFetchState = {
+  vaultPath: null,
   thoughts: [],
   loading: false,
   error: null,
@@ -53,8 +54,7 @@ export function useThoughtsIndex({
   vaultPath,
 }: UseThoughtsIndexOptions): UseThoughtsIndexResult {
   const normalizedVaultPath = vaultPath?.trim() ? vaultPath : null
-  const orderedPaths = useMemo(() => entries.map((entry) => entry.path), [entries])
-  const [state, setState] = useState<ThoughtsIndexState>(EMPTY_STATE)
+  const [state, setState] = useState<ThoughtsFetchState>(EMPTY_STATE)
   const mountedRef = useRef(true)
   const requestIdRef = useRef(0)
 
@@ -77,11 +77,12 @@ export function useThoughtsIndex({
 
     const requestId = ++requestIdRef.current
     if (mountedRef.current) {
-      setState((current) => ({
-        ...current,
+      setState({
+        vaultPath: normalizedVaultPath,
+        thoughts: [],
         loading: true,
         error: null,
-      }))
+      })
     }
 
     try {
@@ -93,7 +94,7 @@ export function useThoughtsIndex({
 
       const thoughts = normalizeThoughts(result)
       setState({
-        groups: buildThoughtGroups(thoughts, orderedPaths),
+        vaultPath: normalizedVaultPath,
         thoughts,
         loading: false,
         error: null,
@@ -101,16 +102,19 @@ export function useThoughtsIndex({
     } catch (error: unknown) {
       if (!mountedRef.current || requestIdRef.current !== requestId) return
 
-      setState((current) => ({
-        ...current,
+      setState({
+        vaultPath: normalizedVaultPath,
+        thoughts: [],
         loading: false,
         error: errorMessage(error),
-      }))
+      })
     }
-  }, [enabled, normalizedVaultPath, orderedPaths])
+  }, [enabled, normalizedVaultPath])
 
   useEffect(() => {
-    void refresh()
+    queueMicrotask(() => {
+      void refresh()
+    })
   }, [refresh])
 
   const saveThought = useCallback(async (thought: ThoughtRecord): Promise<ThoughtRecord> => {
@@ -141,8 +145,19 @@ export function useThoughtsIndex({
     await refresh()
   }, [normalizedVaultPath, refresh])
 
+  const visibleState = (
+    enabled
+    && normalizedVaultPath
+    && state.vaultPath === normalizedVaultPath
+  ) ? state : EMPTY_STATE
+  const groups = buildThoughtGroups(
+    visibleState.thoughts,
+    entries.map((entry) => entry.path),
+  )
+
   return {
-    ...state,
+    ...visibleState,
+    groups,
     refresh,
     saveThought,
     deleteThought,
