@@ -1,0 +1,35 @@
+<h2>Semantic Search Boundary</h2>
+<p class="subtitle">Recommended direction: native Rust feature with most new behavior isolated behind a semantic module.</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">Plain Native Integration</div>
+    <div class="mockup-body">
+      <div class="mock-nav">React Search UI</div>
+      <div style="display:flex;gap:12px;margin-top:12px">
+        <div class="mock-sidebar">useNoteSearch<br>Settings<br>StatusBar<br>Watcher hooks</div>
+        <div class="mock-content">lib.rs<br>vault/cache.rs<br>vault_watcher.rs<br>search.rs<br>semantic pieces mixed in</div>
+      </div>
+      <p style="margin-top:14px">Best fit today, but upstream changes in shared files create repeated merge pressure.</p>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">Native With Semantic Boundary</div>
+    <div class="mockup-body">
+      <div class="mock-nav">React Search UI</div>
+      <div style="display:flex;gap:12px;margin-top:12px">
+        <div class="mock-sidebar">Small hooks<br>search mode<br>status poll</div>
+        <div class="mock-content">
+          src-tauri/src/semantic/<br>
+          embedder.rs<br>
+          chunker.rs<br>
+          index.rs<br>
+          query.rs<br>
+          graph.rs later
+        </div>
+      </div>
+      <p style="margin-top:14px">Same native UX, but most fork-specific behavior stays additive and easier to rebase.</p>
+    </div>
+  </div>
+</div>

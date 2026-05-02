@@ -5,7 +5,10 @@
       "Read(*)",
       "Bash(cat*)",
       "Bash(ls*)",
-      "Write(*)"
+      "Write(*)",
+      "Bash(zsh *)",
+      "Read(//Users/sonle/**)",
+      "Bash(env)"
     ]
   }
 }
