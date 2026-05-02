@@ -1,4 +1,4 @@
-import { Archive, FileText, Tray } from '@phosphor-icons/react'
+import { Archive, FileText, Highlighter, Tray } from '@phosphor-icons/react'
 import type { SidebarSelection } from '../../types'
 import { isSelectionActive, NavItem } from '../SidebarParts'
 import { translate, type AppLocale } from '../../lib/i18n'
@@ -9,6 +9,7 @@ interface SidebarTopNavProps {
   showInbox: boolean
   inboxCount: number
   activeCount: number
+  highlightCount: number
   archivedCount: number
   locale?: AppLocale
 }
@@ -19,6 +20,7 @@ export function SidebarTopNav({
   showInbox,
   inboxCount,
   activeCount,
+  highlightCount,
   archivedCount,
   locale = 'en',
 }: SidebarTopNavProps) {
@@ -45,6 +47,16 @@ export function SidebarTopNav({
         badgeStyle={{ background: 'var(--muted)' }}
         activeBadgeClassName="bg-primary text-primary-foreground"
         onClick={() => onSelect({ kind: 'filter', filter: 'all' })}
+      />
+      <NavItem
+        icon={Highlighter}
+        label={translate(locale, 'sidebar.nav.highlights')}
+        count={highlightCount}
+        isActive={isSelectionActive(selection, { kind: 'filter', filter: 'highlights' })}
+        badgeClassName="text-muted-foreground"
+        badgeStyle={{ background: 'var(--muted)' }}
+        activeBadgeClassName="bg-primary text-primary-foreground"
+        onClick={() => onSelect({ kind: 'filter', filter: 'highlights' })}
       />
       <NavItem
         icon={Archive}

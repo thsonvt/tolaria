@@ -1,5 +1,6 @@
 import { BulkActionBar } from '../BulkActionBar'
 import { FilterPills } from './FilterPills'
+import { HighlightsList } from './HighlightsList'
 import { NoteListHeader } from './NoteListHeader'
 import { EntityView, ListView } from './NoteListViews'
 import type { useNoteListModel } from './useNoteListModel'
@@ -46,6 +47,11 @@ function NoteListContent({
   modifiedFilesError,
   searched,
   noteListVirtuosoRef,
+  isHighlightsView,
+  highlightGroups,
+  highlightLoading,
+  highlightError,
+  onOpenHighlight,
   locale,
 }: Pick<
   NoteListLayoutProps,
@@ -63,11 +69,24 @@ function NoteListContent({
   | 'modifiedFilesError'
   | 'searched'
   | 'noteListVirtuosoRef'
+  | 'isHighlightsView'
+  | 'highlightGroups'
+  | 'highlightLoading'
+  | 'highlightError'
+  | 'onOpenHighlight'
   | 'locale'
 >) {
   return (
     <div className="flex-1 overflow-hidden" style={{ minHeight: 0 }}>
-      {entitySelection ? (
+      {isHighlightsView ? (
+        <HighlightsList
+          groups={highlightGroups}
+          loading={highlightLoading}
+          error={highlightError}
+          onOpenHighlight={onOpenHighlight ?? (() => {})}
+          locale={locale}
+        />
+      ) : entitySelection ? (
         <EntityView
           entity={entitySelection.entry}
           groups={searchedGroups}
@@ -116,6 +135,11 @@ function NoteListBody({
   isInboxView,
   modifiedFilesError,
   searched,
+  isHighlightsView,
+  highlightGroups,
+  highlightLoading,
+  highlightError,
+  onOpenHighlight,
   locale,
   showFilterPills,
   noteListFilter,
@@ -130,6 +154,11 @@ function NoteListBody({
   | 'focusNoteList'
   | 'noteListVirtuosoRef'
   | 'entitySelection'
+  | 'isHighlightsView'
+  | 'highlightGroups'
+  | 'highlightLoading'
+  | 'highlightError'
+  | 'onOpenHighlight'
   | 'searchedGroups'
   | 'query'
   | 'collapsedGroups'
@@ -175,6 +204,11 @@ function NoteListBody({
         modifiedFilesError={modifiedFilesError}
         searched={searched}
         noteListVirtuosoRef={noteListVirtuosoRef}
+        isHighlightsView={isHighlightsView}
+        highlightGroups={highlightGroups}
+        highlightLoading={highlightLoading}
+        highlightError={highlightError}
+        onOpenHighlight={onOpenHighlight}
         locale={locale}
       />
       {showFilterPills && (

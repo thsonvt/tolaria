@@ -223,6 +223,20 @@ describe('Sidebar', () => {
     expect(screen.queryByText('Favorites')).not.toBeInTheDocument()
   })
 
+  it('renders a top-level Highlights row with count', () => {
+    render(
+      <Sidebar
+        entries={[]}
+        selection={defaultSelection}
+        onSelect={() => {}}
+        highlightCount={2}
+      />,
+    )
+
+    expect(screen.getByText('Highlights')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
+  })
+
   it('renders section group headers only for types present in entries', () => {
     render(<Sidebar entries={mockEntries} selection={defaultSelection} onSelect={() => {}} />)
     expect(screen.getByText('Projects')).toBeInTheDocument()
@@ -1119,8 +1133,8 @@ describe('Sidebar', () => {
     render(<Sidebar entries={entries} selection={defaultSelection} onSelect={() => {}} />)
 
     const topNav = screen.getByTestId('sidebar-top-nav')
-    expect(topNav.children[1].textContent).toContain('All Notes1')
-    expect(topNav.children[2].textContent).toContain('Archive1')
+    expect(within(topNav).getByText('All Notes').closest('div')?.textContent).toContain('All Notes1')
+    expect(within(topNav).getByText('Archive').closest('div')?.textContent).toContain('Archive1')
   })
 
   it('does not show inline entries — no child items in type sections', () => {

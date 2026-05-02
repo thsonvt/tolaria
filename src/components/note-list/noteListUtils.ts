@@ -16,6 +16,7 @@ const FILTER_TITLE_KEYS = {
   changes: 'noteList.title.changes',
   inbox: 'noteList.title.inbox',
   pulse: 'noteList.title.history',
+  highlights: 'noteList.title.highlights',
 } as const
 
 type LocalizedFilter = keyof typeof FILTER_TITLE_KEYS

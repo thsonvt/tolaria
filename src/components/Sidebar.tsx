@@ -56,6 +56,7 @@ interface SidebarProps {
   onCancelRenameFolder?: () => void
   showInbox?: boolean
   inboxCount?: number
+  highlightCount?: number
   locale?: AppLocale
   onCollapse?: () => void
 }
@@ -83,6 +84,7 @@ interface SidebarNavigationProps extends Pick<
   | 'onCancelRenameFolder'
   | 'showInbox'
   | 'inboxCount'
+  | 'highlightCount'
   | 'onCreateNewType'
   | 'locale'
 > {
@@ -123,6 +125,7 @@ function SidebarNavigation({
   onCancelRenameFolder,
   showInbox = true,
   inboxCount = 0,
+  highlightCount = 0,
   locale = 'en',
   onCreateNewType,
   activeCount,
@@ -150,6 +153,7 @@ function SidebarNavigation({
         showInbox={showInbox}
         inboxCount={inboxCount}
         activeCount={activeCount}
+        highlightCount={highlightCount}
         archivedCount={archivedCount}
         locale={locale}
       />
@@ -254,6 +258,7 @@ export const Sidebar = memo(function Sidebar({
   onCancelRenameFolder,
   showInbox = true,
   inboxCount = 0,
+  highlightCount = 0,
   locale = 'en',
   onCollapse,
   onCreateNewType,
@@ -315,6 +320,7 @@ export const Sidebar = memo(function Sidebar({
         onCancelRenameFolder={onCancelRenameFolder}
         showInbox={showInbox}
         inboxCount={inboxCount}
+        highlightCount={highlightCount}
         locale={locale}
         onCreateNewType={onCreateNewType}
         activeCount={activeCount}

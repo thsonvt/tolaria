@@ -11,6 +11,7 @@ import type {
 import type { AppLocale } from '../../lib/i18n'
 import type { NoteListFilter } from '../../utils/noteListHelpers'
 import { countByFilter, countAllByFilter, countAllNotesByFilter } from '../../utils/noteListHelpers'
+import { useHighlightsIndex, type HighlightExcerpt } from '../../hooks/useHighlightsIndex'
 import { NoteItem } from '../NoteItem'
 import { prefetchNoteContent } from '../../hooks/useTabManagement'
 import type { MultiSelectState } from '../../hooks/useMultiSelect'
@@ -429,6 +430,9 @@ export interface NoteListProps {
   onUpdateViewDefinition?: (filename: string, patch: Partial<ViewDefinition>) => void
   views?: ViewFile[]
   visibleNotesRef?: React.MutableRefObject<VaultEntry[]>
+  vaultPath?: string | null
+  openTabContentByPath?: Record<string, string>
+  onOpenHighlight?: (highlight: HighlightExcerpt) => void
   locale?: AppLocale
 }
 
@@ -442,6 +446,11 @@ function buildNoteListLayoutModel(params: {
   onNoteListFilterChange: (filter: NoteListFilter) => void
   onOpenType: (entry: VaultEntry) => void
   locale: AppLocale
+  isHighlightsView: boolean
+  highlightGroups: ReturnType<typeof useHighlightsIndex>['groups']
+  highlightLoading: boolean
+  highlightError: string | null
+  onOpenHighlight?: (highlight: HighlightExcerpt) => void
   content: ReturnType<typeof useNoteListContent> & {
     handleSearchKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   }
@@ -480,6 +489,11 @@ function buildNoteListLayoutModel(params: {
     focusNoteList: params.interaction.noteListKeyboard.focusList,
     noteListVirtuosoRef: params.interaction.noteListKeyboard.virtuosoRef,
     entitySelection: params.interaction.entitySelection,
+    isHighlightsView: params.isHighlightsView,
+    highlightGroups: params.highlightGroups,
+    highlightLoading: params.highlightLoading,
+    highlightError: params.highlightError,
+    onOpenHighlight: params.onOpenHighlight,
     searchedGroups: params.content.searchedGroups,
     collapsedGroups: params.interaction.collapsedGroups,
     sortPrefs: params.content.sortPrefs,
@@ -535,11 +549,21 @@ export function useNoteListModel({
   onUpdateViewDefinition,
   views,
   visibleNotesRef,
+  vaultPath,
+  openTabContentByPath,
+  onOpenHighlight,
   locale = 'en',
 }: NoteListProps) {
   const selectedNotePath = selectedNote?.path ?? null
   const { modifiedPathSet, modifiedSuffixes, resolvedGetNoteStatus } = useModifiedFilesState(modifiedFiles, getNoteStatus)
   const { isInboxView } = useViewFlags(selection)
+  const isHighlightsView = selection.kind === 'filter' && selection.filter === 'highlights'
+  const highlightsIndex = useHighlightsIndex({
+    entries,
+    enabled: isHighlightsView,
+    vaultPath,
+    openTabContentByPath: openTabContentByPath ?? {},
+  })
   const filterCounts = useFilterCounts(entries, selection)
   const content = useNoteListContent({
     entries,
@@ -633,6 +657,11 @@ export function useNoteListModel({
     filterCounts,
     onNoteListFilterChange,
     locale,
+    isHighlightsView,
+    highlightGroups: highlightsIndex.groups,
+    highlightLoading: highlightsIndex.loading,
+    highlightError: highlightsIndex.error,
+    onOpenHighlight,
     content: {
       ...content,
       handleSearchKeyDown,
