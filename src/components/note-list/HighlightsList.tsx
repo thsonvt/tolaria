@@ -39,6 +39,15 @@ export function HighlightsList({
     return <EmptyMessage text={translate(locale, 'noteList.highlights.error')} />
   }
 
+  function handleHighlightKeyDown(
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    highlight: HighlightExcerpt,
+  ) {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    onOpenHighlight(highlight)
+  }
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="border-b border-border p-3">
@@ -68,6 +77,7 @@ export function HighlightsList({
                     variant="ghost"
                     className="h-auto w-full items-start justify-start gap-2 whitespace-normal rounded-md px-2 py-2 text-left text-sm"
                     onClick={() => onOpenHighlight(highlight)}
+                    onKeyDown={(event) => handleHighlightKeyDown(event, highlight)}
                   >
                     <Highlighter className="mt-0.5 h-4 w-4 shrink-0 text-yellow-600" weight="fill" />
                     <span className="line-clamp-3 text-foreground">{highlight.excerpt}</span>

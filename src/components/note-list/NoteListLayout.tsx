@@ -182,11 +182,11 @@ function NoteListBody({
       ref={noteListContainerRef}
       className="relative flex flex-1 flex-col overflow-hidden outline-none"
       style={{ minHeight: 0 }}
-      tabIndex={0}
-      onBlur={handleNoteListBlur}
-      onKeyDown={handleListKeyDown}
-      onFocus={handleNoteListFocus}
-      onClickCapture={focusNoteList}
+      tabIndex={isHighlightsView ? undefined : 0}
+      onBlur={isHighlightsView ? undefined : handleNoteListBlur}
+      onKeyDown={isHighlightsView ? undefined : handleListKeyDown}
+      onFocus={isHighlightsView ? undefined : handleNoteListFocus}
+      onClickCapture={isHighlightsView ? undefined : focusNoteList}
       data-testid="note-list-container"
     >
       <NoteListContent
@@ -228,6 +228,7 @@ function NoteListLayoutHeader({
   title,
   typeDocument,
   isEntityView,
+  isHighlightsView,
   listSort,
   listDirection,
   customProperties,
@@ -249,6 +250,7 @@ function NoteListLayoutHeader({
   | 'title'
   | 'typeDocument'
   | 'isEntityView'
+  | 'isHighlightsView'
   | 'listSort'
   | 'listDirection'
   | 'customProperties'
@@ -266,6 +268,19 @@ function NoteListLayoutHeader({
   | 'setSearch'
   | 'handleSearchKeyDown'
 >) {
+  if (isHighlightsView) {
+    return (
+      <div
+        className="flex h-[52px] shrink-0 items-center border-b border-border px-4"
+        style={{ cursor: 'default', paddingLeft: sidebarCollapsed ? 80 : undefined }}
+      >
+        <h3 className="m-0 min-w-0 flex-1 truncate text-[14px] font-semibold">
+          {title}
+        </h3>
+      </div>
+    )
+  }
+
   return (
     <NoteListHeader
       title={title}

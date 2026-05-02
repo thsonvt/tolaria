@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { VaultEntry } from '../types'
 import {
@@ -23,6 +23,11 @@ interface HighlightsIndexState {
   error: string | null
 }
 
+interface HighlightsCacheEntry {
+  signature: string
+  highlights: HighlightExcerpt[]
+}
+
 function isIndexableMarkdownEntry(entry: VaultEntry): boolean {
   return !entry.archived && (entry.fileKind ?? 'markdown') === 'markdown'
 }
@@ -32,6 +37,25 @@ const EMPTY_STATE: HighlightsIndexState = {
   highlights: [],
   loading: false,
   error: null,
+}
+
+function buildDiskEntrySignature(entry: VaultEntry): string {
+  return [
+    'disk',
+    entry.path,
+    entry.modifiedAt ?? '',
+    entry.createdAt ?? '',
+    entry.fileSize,
+  ].join(':')
+}
+
+function buildOpenEntrySignature(entry: VaultEntry, content: string): string {
+  return [
+    'open',
+    entry.path,
+    content.length,
+    content,
+  ].join(':')
 }
 
 function buildRelevantOpenTabSnapshot(
@@ -75,6 +99,7 @@ export function useHighlightsIndex({
     [relevantOpenTabContentKey],
   )
   const [state, setState] = useState<HighlightsIndexState>(EMPTY_STATE)
+  const cacheRef = useRef<Map<string, HighlightsCacheEntry>>(new Map())
 
   useEffect(() => {
     if (!enabled) {
@@ -92,8 +117,23 @@ export function useHighlightsIndex({
         if (cancelled) return
 
         const openContent = relevantOpenTabContentByPath[entry.path]
+        const signature = openContent !== undefined
+          ? buildOpenEntrySignature(entry, openContent)
+          : buildDiskEntrySignature(entry)
+        const cached = cacheRef.current.get(entry.path)
+
+        if (cached?.signature === signature) {
+          highlights.push(...cached.highlights)
+          continue
+        }
+
         if (openContent !== undefined) {
-          highlights.push(...parseEntryHighlights(entry, openContent))
+          const parsedHighlights = parseEntryHighlights(entry, openContent)
+          cacheRef.current.set(entry.path, {
+            signature,
+            highlights: parsedHighlights,
+          })
+          highlights.push(...parsedHighlights)
           continue
         }
 
@@ -104,7 +144,12 @@ export function useHighlightsIndex({
 
         if (cancelled) return
 
-        highlights.push(...parseEntryHighlights(entry, content))
+        const parsedHighlights = parseEntryHighlights(entry, content)
+        cacheRef.current.set(entry.path, {
+          signature,
+          highlights: parsedHighlights,
+        })
+        highlights.push(...parsedHighlights)
       }
 
       if (cancelled) return

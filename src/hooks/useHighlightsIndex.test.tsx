@@ -342,4 +342,60 @@ describe('useHighlightsIndex', () => {
     expect(invokeMock).toHaveBeenCalledTimes(1)
     expect(result.current.groups[0].highlights[0].excerpt).toBe('indexed')
   })
+
+  it('reuses cached closed-note results when open-tab content changes', async () => {
+    const invokeMock = vi.mocked(invoke)
+    invokeMock.mockImplementation(async (_command, args) => {
+      const path = (args as { path: string }).path
+      if (path === '/vault/closed.md') return '# Closed\n\n==closed=='
+      throw new Error(`unexpected disk read for ${path}`)
+    })
+
+    const entries = [
+      entry('/vault/open.md', 'Open'),
+      entry('/vault/closed.md', 'Closed'),
+    ]
+
+    const { result, rerender } = renderHook(
+      ({ openTabContentByPath }) => useHighlightsIndex({
+        entries,
+        enabled: true,
+        vaultPath: '/vault',
+        openTabContentByPath,
+      }),
+      {
+        initialProps: {
+          openTabContentByPath: {
+            '/vault/open.md': '# Open\n\n==first==',
+          },
+        },
+      },
+    )
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(invokeMock).toHaveBeenCalledTimes(1)
+    expect(result.current.groups.map((group) => group.notePath)).toEqual([
+      '/vault/open.md',
+      '/vault/closed.md',
+    ])
+    expect(result.current.groups[0].highlights[0].excerpt).toBe('first')
+    expect(result.current.groups[1].highlights[0].excerpt).toBe('closed')
+
+    rerender({
+      openTabContentByPath: {
+        '/vault/open.md': '# Open\n\n==second==',
+      },
+    })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(invokeMock).toHaveBeenCalledTimes(1)
+    expect(result.current.groups.map((group) => group.notePath)).toEqual([
+      '/vault/open.md',
+      '/vault/closed.md',
+    ])
+    expect(result.current.groups[0].highlights[0].excerpt).toBe('second')
+    expect(result.current.groups[1].highlights[0].excerpt).toBe('closed')
+  })
 })

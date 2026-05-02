@@ -138,6 +138,34 @@ describe('NoteList rendering', () => {
     expect(screen.getByText('No notes found')).toBeInTheDocument()
   })
 
+  it('renders a simplified header in highlights mode', async () => {
+    const onOpenHighlight = vi.fn()
+
+    renderNoteList({
+      entries: [
+        makeEntry({
+          path: '/vault/highlights.md',
+          filename: 'highlights.md',
+          title: 'Highlights Source',
+          isA: 'Note',
+        }),
+      ],
+      selection: { kind: 'filter', filter: 'highlights' },
+      vaultPath: '/vault',
+      openTabContentByPath: {
+        '/vault/highlights.md': '# Highlights Source\n\n==retrieval is infrastructure==',
+      },
+      onOpenHighlight,
+    })
+
+    expect(await screen.findByText('retrieval is infrastructure')).toBeInTheDocument()
+    expect(screen.getByText('Highlights')).toBeInTheDocument()
+    expect(screen.queryByTitle('Search notes')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('Create new note')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('sort-button-__list__')).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Filter highlights')).toBeInTheDocument()
+  })
+
   it('renders all entries in the all-notes view', () => {
     renderNoteList()
     expect(screen.getByText('Build Laputa App')).toBeInTheDocument()
