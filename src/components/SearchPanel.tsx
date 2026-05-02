@@ -27,9 +27,10 @@ interface SearchPanelProps {
 }
 
 export function SearchPanel({ open, vaultPath, entries, onSelectNote, onClose }: SearchPanelProps) {
-  const [mode, setMode] = useState<SearchMode>('keyword')
+  const [selectedMode, setSelectedMode] = useState<SearchMode | null>(null)
   const { status: semanticStatus } = useSemanticSearchSettings(open)
   const semanticEnabled = semanticStatus?.enabled === true && semanticStatus.indexState === 'ready'
+  const mode = selectedMode ?? (semanticEnabled ? 'semantic' : 'keyword')
   const {
     query, setQuery, results, selectedIndex, setSelectedIndex, loading, elapsedMs,
   } = useUnifiedSearch(vaultPath, open, mode)
@@ -110,8 +111,8 @@ export function SearchPanel({ open, vaultPath, entries, onSelectNote, onClose }:
           loading={loading}
           mode={mode}
           semanticEnabled={semanticEnabled}
-          onModeChange={setMode}
-          onEnableSemanticRequest={() => setMode('keyword')}
+          onModeChange={setSelectedMode}
+          onEnableSemanticRequest={() => setSelectedMode('keyword')}
           onChange={setQuery}
           onKeyDown={handleKeyDown}
         />

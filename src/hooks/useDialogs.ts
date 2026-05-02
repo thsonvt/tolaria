@@ -15,7 +15,7 @@ export function useDialogs() {
 
   const openCreateType = useCallback(() => setShowCreateTypeDialog(true), [])
   const closeCreateType = useCallback(() => setShowCreateTypeDialog(false), [])
-  const openQuickOpen = useCallback(() => setShowQuickOpen(true), [])
+  const openQuickOpen = useCallback(() => setShowSearch(true), [])
   const closeQuickOpen = useCallback(() => setShowQuickOpen(false), [])
   const openCommandPalette = useCallback(() => setShowCommandPalette(true), [])
   const closeCommandPalette = useCallback(() => setShowCommandPalette(false), [])

@@ -189,9 +189,8 @@ describe('SearchPanel', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Semantic search' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Semantic search' })).toHaveAttribute('aria-pressed', 'true')
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Semantic search' }))
     fireEvent.change(screen.getByPlaceholderText('Search in all notes...'), {
       target: { value: 'notes by Shau' },
     })
