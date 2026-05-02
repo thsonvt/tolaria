@@ -1,7 +1,7 @@
 use crate::search::SearchResponse;
 use crate::semantic::{
     chunk_note, query_index, ChunkRecord, FastEmbedder, SemanticEmbedder, SemanticIndex,
-    SemanticNoteInput, SemanticStatus, SemanticStatusStore, DEFAULT_MODEL_ID,
+    SemanticIndexState, SemanticNoteInput, SemanticStatus, DEFAULT_MODEL_ID,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -14,7 +14,7 @@ const CHUNK_MAX_WORDS: usize = 512;
 
 #[tauri::command]
 pub fn semantic_index_status() -> SemanticStatus {
-    SemanticStatusStore::default().snapshot()
+    semantic_status_from_settings(crate::settings::get_settings().ok())
 }
 
 #[tauri::command]
@@ -152,15 +152,49 @@ fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
+fn semantic_status_from_settings(settings: Option<crate::settings::Settings>) -> SemanticStatus {
+    let enabled = settings
+        .and_then(|settings| settings.semantic_search_enabled)
+        .unwrap_or(false);
+
+    if !enabled {
+        return SemanticStatus::default();
+    }
+
+    SemanticStatus {
+        enabled: true,
+        model_ready: true,
+        index_state: SemanticIndexState::Ready,
+        indexed_notes: 0,
+        total_notes: 0,
+        message: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn status_command_starts_disabled() {
-        let status = semantic_index_status();
+        let status = semantic_status_from_settings(None);
 
         assert_eq!(status.enabled, false);
+    }
+
+    #[test]
+    fn status_command_reports_ready_when_setting_is_enabled() {
+        let status = semantic_status_from_settings(Some(crate::settings::Settings {
+            semantic_search_enabled: Some(true),
+            ..crate::settings::Settings::default()
+        }));
+
+        assert_eq!(status.enabled, true);
+        assert_eq!(status.model_ready, true);
+        assert_eq!(
+            status.index_state,
+            crate::semantic::SemanticIndexState::Ready
+        );
     }
 }
 
