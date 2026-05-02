@@ -24,7 +24,9 @@ pub(crate) struct VaultBoundary {
 
 impl VaultBoundary {
     pub(crate) fn from_request(requested_vault_path: Option<&str>) -> Result<Self, String> {
-        let configured_root = if cfg!(test) {
+        let configured_root = if cfg!(test)
+            && std::env::var_os("TOLARIA_TEST_USE_CONFIGURED_ACTIVE_VAULT").is_none()
+        {
             None
         } else {
             load_configured_active_vault_root()?

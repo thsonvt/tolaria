@@ -7,7 +7,7 @@ fn with_thought_root<T>(
     vault_path: PathBuf,
     action: impl FnOnce(&Path) -> Result<T, String>,
 ) -> Result<T, String> {
-    if !vault_path.is_absolute() {
+    if !vault_path.as_os_str().is_empty() && !vault_path.is_absolute() {
         return Err(ACTIVE_VAULT_PATH_ERROR.to_string());
     }
 

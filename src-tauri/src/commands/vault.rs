@@ -20,10 +20,15 @@ pub use view_cmds::*;
 mod tests {
     use super::*;
     use crate::vault::ViewDefinition;
+    use crate::vault_list::VaultList;
+    use std::ffi::OsString;
     use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
+    use tempfile::TempDir;
 
     const ACTIVE_VAULT_PATH_ERROR: &str = super::boundary::ACTIVE_VAULT_PATH_ERROR;
     const INVALID_VIEW_FILENAME_ERROR: &str = super::boundary::INVALID_VIEW_FILENAME_ERROR;
+    static CONFIG_ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn vault_path_arg(vault_path: &Path) -> Option<std::path::PathBuf> {
         Some(vault_path.to_path_buf())
@@ -111,6 +116,70 @@ mod tests {
 
         assert!(type_definition.contains("visible: false"));
         assert!(type_definition.contains("# Type"));
+    }
+
+    struct ConfigEnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        home: Option<OsString>,
+        xdg_config_home: Option<OsString>,
+        appdata: Option<OsString>,
+        test_active_vault: Option<OsString>,
+    }
+
+    impl ConfigEnvGuard {
+        fn new(config_root: &Path) -> Self {
+            let lock = CONFIG_ENV_LOCK.lock().unwrap();
+            let home = std::env::var_os("HOME");
+            let xdg_config_home = std::env::var_os("XDG_CONFIG_HOME");
+            let appdata = std::env::var_os("APPDATA");
+            let test_active_vault = std::env::var_os("TOLARIA_TEST_USE_CONFIGURED_ACTIVE_VAULT");
+
+            std::env::set_var("HOME", config_root);
+            std::env::set_var("XDG_CONFIG_HOME", config_root);
+            std::env::set_var("APPDATA", config_root);
+            std::env::set_var("TOLARIA_TEST_USE_CONFIGURED_ACTIVE_VAULT", "1");
+
+            Self {
+                _lock: lock,
+                home,
+                xdg_config_home,
+                appdata,
+                test_active_vault,
+            }
+        }
+    }
+
+    impl Drop for ConfigEnvGuard {
+        fn drop(&mut self) {
+            match &self.home {
+                Some(value) => std::env::set_var("HOME", value),
+                None => std::env::remove_var("HOME"),
+            }
+            match &self.xdg_config_home {
+                Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+                None => std::env::remove_var("XDG_CONFIG_HOME"),
+            }
+            match &self.appdata {
+                Some(value) => std::env::set_var("APPDATA", value),
+                None => std::env::remove_var("APPDATA"),
+            }
+            match &self.test_active_vault {
+                Some(value) => std::env::set_var("TOLARIA_TEST_USE_CONFIGURED_ACTIVE_VAULT", value),
+                None => std::env::remove_var("TOLARIA_TEST_USE_CONFIGURED_ACTIVE_VAULT"),
+            }
+        }
+    }
+
+    fn persist_active_vault(active_vault: &Path) -> (TempDir, ConfigEnvGuard) {
+        let config_root = TempDir::new().unwrap();
+        let env_guard = ConfigEnvGuard::new(config_root.path());
+        crate::vault_list::save_vault_list(&VaultList {
+            vaults: Vec::new(),
+            active_vault: Some(active_vault.to_string_lossy().into_owned()),
+            hidden_defaults: Vec::new(),
+        })
+        .unwrap();
+        (config_root, env_guard)
     }
 
     #[test]
@@ -209,12 +278,31 @@ mod tests {
 
     #[test]
     fn thought_commands_reject_missing_active_vault() {
+        let _config_lock = CONFIG_ENV_LOCK.lock().unwrap();
         let err = list_thoughts(PathBuf::from("../outside")).unwrap_err();
         assert_eq!(err, ACTIVE_VAULT_PATH_ERROR);
     }
 
     #[test]
+    fn thought_commands_require_an_active_vault_when_vault_path_is_empty() {
+        let _config_lock = CONFIG_ENV_LOCK.lock().unwrap();
+        let err = list_thoughts(PathBuf::new()).unwrap_err();
+        assert_eq!(err, "No active vault selected");
+    }
+
+    #[test]
+    fn thought_commands_reject_requested_vaults_that_do_not_match_the_active_vault() {
+        let active_vault = TempDir::new().unwrap();
+        let other_vault = TempDir::new().unwrap();
+        let (_config_root, _env_guard) = persist_active_vault(active_vault.path());
+
+        let err = list_thoughts(other_vault.path().to_path_buf()).unwrap_err();
+        assert_eq!(err, "Vault path must match the active vault");
+    }
+
+    #[test]
     fn thought_commands_round_trip_inside_requested_vault() {
+        let _config_lock = CONFIG_ENV_LOCK.lock().unwrap();
         let dir = tempfile::TempDir::new().unwrap();
         let thought = crate::vault::thoughts::ThoughtRecord {
             id: "thought-1".to_string(),
