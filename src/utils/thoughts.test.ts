@@ -72,6 +72,16 @@ describe('thought grouping and filtering', () => {
     expect(groups.map((group) => group.notePath)).toEqual(['/vault/a.md', '/vault/b.md'])
   })
 
+  it('falls back to note title ordering for groups outside the ordered note paths', () => {
+    const groups = buildThoughtGroups([
+      { ...baseThought, notePath: '/vault/zeta.md', noteTitle: 'Zeta' },
+      { ...baseThought, id: 'thought-2', notePath: '/vault/alpha.md', noteTitle: 'Alpha' },
+      { ...baseThought, id: 'thought-3', notePath: '/vault/ordered.md', noteTitle: 'Ordered' },
+    ], ['/vault/ordered.md'])
+
+    expect(groups.map((group) => group.noteTitle)).toEqual(['Ordered', 'Alpha', 'Zeta'])
+  })
+
   it('filters by thought body, quote, and title', () => {
     const groups = buildThoughtGroups([baseThought], [baseThought.notePath])
 
@@ -91,11 +101,13 @@ describe('anchor drafts and matching', () => {
   ].join('\n')
 
   it('creates selection anchors from selected text and markdown context', () => {
+    const quote = 'Retrieved documents are where context engineering intersects'
+    const startOffset = markdown.indexOf(quote)
     const draft = createSelectionThoughtDraft({
       notePath: baseThought.notePath,
       noteTitle: baseThought.noteTitle,
       bodyMarkdown: 'Draft body',
-      selectedText: 'Retrieved documents are where context engineering intersects',
+      selectedText: quote,
       markdown,
       now: '2026-05-03T08:00:00.000Z',
       id: 'thought-fixed',
@@ -103,8 +115,10 @@ describe('anchor drafts and matching', () => {
 
     expect(draft.anchor).toMatchObject({
       type: 'selection',
-      quote: 'Retrieved documents are where context engineering intersects',
-      startOffset: markdown.indexOf('Retrieved documents'),
+      quote,
+      startOffset,
+      prefix: markdown.slice(Math.max(0, startOffset - 80), startOffset),
+      suffix: markdown.slice(startOffset + quote.length, Math.min(markdown.length, startOffset + quote.length + 80)),
     })
   })
 
@@ -144,13 +158,32 @@ describe('anchor drafts and matching', () => {
   })
 
   it('creates article anchors when no text is selected', () => {
-    expect(createArticleThoughtDraft({
+    const fixed = createArticleThoughtDraft({
       notePath: baseThought.notePath,
       noteTitle: baseThought.noteTitle,
       bodyMarkdown: 'Whole article thought',
       now: '2026-05-03T08:00:00.000Z',
       id: 'thought-fixed',
-    }).anchor).toEqual({ type: 'article' })
+    })
+
+    expect(fixed).toMatchObject({
+      id: 'thought-fixed',
+      anchor: { type: 'article' },
+      createdAt: '2026-05-03T08:00:00.000Z',
+      updatedAt: '2026-05-03T08:00:00.000Z',
+    })
+
+    const generated = createArticleThoughtDraft({
+      notePath: baseThought.notePath,
+      noteTitle: baseThought.noteTitle,
+      bodyMarkdown: 'Whole article thought',
+      now: '2026-05-03T08:00:00.000Z',
+    })
+
+    expect(generated.id.startsWith('thought-')).toBe(true)
+    expect(generated.createdAt).toBe('2026-05-03T08:00:00.000Z')
+    expect(generated.updatedAt).toBe('2026-05-03T08:00:00.000Z')
+    expect(generated.anchor).toEqual({ type: 'article' })
   })
 
   it('matches article anchors at the top of the note', () => {
