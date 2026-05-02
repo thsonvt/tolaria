@@ -160,6 +160,12 @@ function handleToolbarMouseDownCapture(
   event.preventDefault()
 }
 
+function isHighlightShortcut(event: KeyboardEvent | React.KeyboardEvent) {
+  return (event.metaKey || event.ctrlKey)
+    && event.shiftKey
+    && event.key.toLowerCase() === 'h'
+}
+
 function TolariaOpenLinkButton({ url }: Pick<LinkToolbarProps, 'url'>) {
   const Components = useComponentsContext()!
   const dict = useDictionary()
@@ -437,6 +443,34 @@ function useCompositionAwareEditorChange(options: {
   }, [])
 }
 
+function useEditorHighlightShortcut(options: {
+  containerRef: React.RefObject<HTMLDivElement | null>
+  editable: boolean
+  editor: ReturnType<typeof useCreateBlockNote>
+}) {
+  const { containerRef, editable, editor } = options
+
+  useEffect(() => {
+    if (!editable) return
+
+    const container = containerRef.current
+    if (!container) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!isHighlightShortcut(event)) return
+
+      event.preventDefault()
+      editor.focus()
+      editor.toggleStyles({ highlight: true } as never)
+    }
+
+    container.addEventListener('keydown', handleKeyDown)
+    return () => {
+      container.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [containerRef, editable, editor])
+}
+
 function handleCodeBlockCopy(event: React.ClipboardEvent<HTMLDivElement>) {
   const codeText = selectedCodeBlockText({
     selection: window.getSelection(),
@@ -563,6 +597,7 @@ export function SingleEditorView({ editor, entries, onNavigateWikilink, onChange
   const { isDragOver } = useImageDrop({ containerRef, onImageUrl, vaultPath })
   useBlockNoteSideMenuHoverGuard(containerRef)
   useEditorLinkActivation(containerRef, onNavigateWikilink)
+  useEditorHighlightShortcut({ containerRef, editable, editor })
 
   useEffect(() => {
     _wikilinkEntriesRef.current = entries

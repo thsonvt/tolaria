@@ -254,6 +254,7 @@ function createEditor() {
     insertBlocks: vi.fn(),
     insertInlineContent: vi.fn(),
     setTextCursorPosition: vi.fn(),
+    toggleStyles: vi.fn(),
   }
 }
 
@@ -700,5 +701,52 @@ describe('SingleEditorView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open in a new tab' }))
 
     expect(mockOpenExternalUrl).toHaveBeenCalledWith('https://example.com/docs')
+  })
+
+  it('toggles persistent highlight from the editor shortcut when editable', () => {
+    const { container, editor } = renderEditorHarness()
+    const event = new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 'h',
+      metaKey: true,
+      shiftKey: true,
+    })
+
+    container.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(editor.focus).toHaveBeenCalled()
+    expect(editor.toggleStyles).toHaveBeenCalledWith({ highlight: true })
+  })
+
+  it('does not toggle persistent highlight from the editor shortcut when not editable', () => {
+    const editor = createEditor()
+
+    render(
+      <SingleEditorView
+        editor={editor as never}
+        entries={[makeEntry()]}
+        onNavigateWikilink={vi.fn()}
+        editable={false}
+      />,
+    )
+
+    const container = screen.getByTestId('blocknote-view').closest('.editor__blocknote-container')
+    expect(container).toBeTruthy()
+
+    const event = new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 'h',
+      ctrlKey: true,
+      shiftKey: true,
+    })
+
+    container!.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(editor.focus).not.toHaveBeenCalled()
+    expect(editor.toggleStyles).not.toHaveBeenCalled()
   })
 })

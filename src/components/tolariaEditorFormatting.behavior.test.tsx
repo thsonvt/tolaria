@@ -93,6 +93,7 @@ vi.mock('lucide-react', () => ({
   Bold: MockIcon,
   ChevronDown: MockIcon,
   Code2: MockIcon,
+  Highlighter: MockIcon,
   Italic: MockIcon,
   Strikethrough: MockIcon,
 }))
@@ -174,6 +175,19 @@ describe('tolariaEditorFormatting behavior', () => {
       expect.objectContaining({ id: 'file-block' }),
       { type: 'heading', props: { level: 1 } },
     )
+  })
+
+  it('shows highlight when the schema supports the persistent highlight style', () => {
+    const editor = createMockEditor('paragraph')
+    editor.schema.styleSchema.highlight = { type: 'highlight', propSchema: 'boolean' }
+    useBlockNoteEditorMock.mockReturnValue(editor)
+
+    render(<TolariaFormattingToolbar />)
+
+    fireEvent.click(screen.getByRole('button', { name: /highlight/i }))
+
+    expect(editor.focus).toHaveBeenCalled()
+    expect(editor.toggleStyles).toHaveBeenCalledWith({ highlight: true })
   })
 
   it('controls the floating toolbar placement, hover guard, and escape-key close behavior', () => {

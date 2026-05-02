@@ -46,6 +46,7 @@ import {
   Bold,
   ChevronDown,
   Code2,
+  Highlighter,
   Italic,
   Strikethrough,
   type LucideIcon,
@@ -56,7 +57,7 @@ import {
 } from './tolariaEditorFormattingConfig'
 import { useBlockNoteFormattingToolbarHoverGuard } from './blockNoteFormattingToolbarHoverGuard'
 
-type TolariaBasicTextStyle = 'bold' | 'italic' | 'strike' | 'code'
+type TolariaBasicTextStyle = 'bold' | 'italic' | 'strike' | 'highlight' | 'code'
 
 const FORMATTER_CLOSE_GRACE_MS = 160
 
@@ -167,6 +168,11 @@ const TOLARIA_BASIC_TEXT_STYLE_TOOLTIPS = {
     mainTooltip: 'Strikethrough (persists in markdown)',
     secondaryTooltip: '~~strike~~',
   },
+  highlight: {
+    label: 'Highlight',
+    mainTooltip: 'Highlight (persists in markdown)',
+    secondaryTooltip: '==highlight==',
+  },
   code: {
     label: 'Inline code',
     mainTooltip: 'Inline code (persists in markdown)',
@@ -181,6 +187,7 @@ const TOLARIA_BASIC_TEXT_STYLE_ICONS = {
   bold: Bold,
   italic: Italic,
   strike: Strikethrough,
+  highlight: Highlighter,
   code: Code2,
 } satisfies Record<TolariaBasicTextStyle, LucideIcon>
 
@@ -475,7 +482,7 @@ function replaceToolbarControls(items: ReactElement[]) {
   })
 }
 
-function insertInlineCodeButton(items: ReactElement[]) {
+function insertHighlightAndInlineCodeButtons(items: ReactElement[]) {
   const strikeButtonIndex = items.findIndex(
     (item) => String(item.key) === 'strikeStyleButton',
   )
@@ -483,13 +490,14 @@ function insertInlineCodeButton(items: ReactElement[]) {
 
   return [
     ...items.slice(0, strikeButtonIndex + 1),
+    <TolariaBasicTextStyleButton basicTextStyle="highlight" key="highlightStyleButton" />,
     <TolariaBasicTextStyleButton basicTextStyle="code" key="codeStyleButton" />,
     ...items.slice(strikeButtonIndex + 1),
   ]
 }
 
 function getTolariaFormattingToolbarItems() {
-  return insertInlineCodeButton(
+  return insertHighlightAndInlineCodeButtons(
     replaceToolbarControls(
       filterTolariaFormattingToolbarItems(
         getFormattingToolbarItems(),
