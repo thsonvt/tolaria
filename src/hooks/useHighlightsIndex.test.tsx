@@ -212,4 +212,134 @@ describe('useHighlightsIndex', () => {
     expect(result.current.groups[0].notePath).toBe('/vault/beta.md')
     expect(result.current.groups[0].highlights[0].excerpt).toBe('fresh')
   })
+
+  it('stops a stale multi-note scan before reading remaining notes', async () => {
+    const alphaRead = deferred<string>()
+    const invokeMock = vi.mocked(invoke)
+
+    invokeMock.mockImplementation(async (_command, args) => {
+      const path = (args as { path: string }).path
+      if (path === '/vault/alpha.md') return alphaRead.promise
+      if (path === '/vault/fresh.md') return '# Fresh\n\n==fresh=='
+      if (path === '/vault/bravo.md') return '# Bravo\n\n==stale bravo=='
+      if (path === '/vault/charlie.md') return '# Charlie\n\n==stale charlie=='
+      return ''
+    })
+
+    const staleEntries = [
+      entry('/vault/alpha.md', 'Alpha'),
+      entry('/vault/bravo.md', 'Bravo'),
+      entry('/vault/charlie.md', 'Charlie'),
+    ]
+    const freshEntries = [entry('/vault/fresh.md', 'Fresh')]
+    const openTabContentByPath = {}
+
+    const { result, rerender } = renderHook(
+      ({ entries, enabled, openTabContentByPath }) => useHighlightsIndex({
+        entries,
+        enabled,
+        vaultPath: '/vault',
+        openTabContentByPath,
+      }),
+      {
+        initialProps: {
+          entries: staleEntries,
+          enabled: true,
+          openTabContentByPath,
+        },
+      },
+    )
+
+    expect(invokeMock).toHaveBeenNthCalledWith(1, 'get_note_content', {
+      path: '/vault/alpha.md',
+      vaultPath: '/vault',
+    })
+
+    rerender({
+      entries: freshEntries,
+      enabled: true,
+      openTabContentByPath,
+    })
+
+    expect(invokeMock).toHaveBeenNthCalledWith(2, 'get_note_content', {
+      path: '/vault/fresh.md',
+      vaultPath: '/vault',
+    })
+
+    await act(async () => {
+      alphaRead.resolve('# Alpha\n\n==stale alpha==')
+    })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(invokeMock).toHaveBeenCalledTimes(2)
+    expect(invokeMock).not.toHaveBeenCalledWith('get_note_content', {
+      path: '/vault/bravo.md',
+      vaultPath: '/vault',
+    })
+    expect(invokeMock).not.toHaveBeenCalledWith('get_note_content', {
+      path: '/vault/charlie.md',
+      vaultPath: '/vault',
+    })
+    expect(result.current.groups).toHaveLength(1)
+    expect(result.current.groups[0].notePath).toBe('/vault/fresh.md')
+  })
+
+  it('sets error and clears loading when a disk read fails', async () => {
+    vi.mocked(invoke).mockRejectedValue(new Error('disk exploded'))
+    const entries = [entry('/vault/alpha.md', 'Alpha')]
+    const openTabContentByPath = {}
+
+    const { result } = renderHook(() => useHighlightsIndex({
+      entries,
+      enabled: true,
+      vaultPath: '/vault',
+      openTabContentByPath,
+    }))
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(result.current).toMatchObject({
+      groups: [],
+      highlights: [],
+      loading: false,
+      error: 'disk exploded',
+    })
+  })
+
+  it('does not refetch when unrelated open-tab content changes', async () => {
+    const invokeMock = vi.mocked(invoke)
+    invokeMock.mockResolvedValue('# Alpha\n\n==indexed==')
+    const entries = [entry('/vault/alpha.md', 'Alpha')]
+
+    const { result, rerender } = renderHook(
+      ({ openTabContentByPath }) => useHighlightsIndex({
+        entries,
+        enabled: true,
+        vaultPath: '/vault',
+        openTabContentByPath,
+      }),
+      {
+        initialProps: {
+          openTabContentByPath: {
+            '/vault/elsewhere.md': '# Elsewhere\n\n==first==',
+          },
+        },
+      },
+    )
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(invokeMock).toHaveBeenCalledTimes(1)
+
+    rerender({
+      openTabContentByPath: {
+        '/vault/elsewhere.md': '# Elsewhere\n\n==second==',
+      },
+    })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(invokeMock).toHaveBeenCalledTimes(1)
+    expect(result.current.groups[0].highlights[0].excerpt).toBe('indexed')
+  })
 })

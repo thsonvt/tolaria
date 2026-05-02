@@ -34,6 +34,27 @@ const EMPTY_STATE: HighlightsIndexState = {
   error: null,
 }
 
+function buildRelevantOpenTabSnapshot(
+  entries: VaultEntry[],
+  openTabContentByPath: Record<string, string>,
+): { contentByPath: Record<string, string>; key: string } {
+  const contentByPath: Record<string, string> = {}
+  const keyParts: string[] = []
+
+  for (const entry of entries) {
+    const content = openTabContentByPath[entry.path]
+    if (content === undefined) continue
+
+    contentByPath[entry.path] = content
+    keyParts.push(`${entry.path.length}:${entry.path}:${content.length}:${content}`)
+  }
+
+  return {
+    contentByPath,
+    key: keyParts.join('\u0000'),
+  }
+}
+
 export function useHighlightsIndex({
   entries,
   enabled,
@@ -43,6 +64,15 @@ export function useHighlightsIndex({
   const indexableEntries = useMemo(
     () => entries.filter(isIndexableMarkdownEntry),
     [entries],
+  )
+  const relevantOpenTabSnapshot = useMemo(
+    () => buildRelevantOpenTabSnapshot(indexableEntries, openTabContentByPath),
+    [indexableEntries, openTabContentByPath],
+  )
+  const relevantOpenTabContentKey = relevantOpenTabSnapshot.key
+  const relevantOpenTabContentByPath = useMemo(
+    () => relevantOpenTabSnapshot.contentByPath,
+    [relevantOpenTabContentKey],
   )
   const [state, setState] = useState<HighlightsIndexState>(EMPTY_STATE)
 
@@ -59,11 +89,21 @@ export function useHighlightsIndex({
       const highlights: HighlightExcerpt[] = []
 
       for (const entry of indexableEntries) {
-        const openContent = openTabContentByPath[entry.path]
-        const content = openContent ?? await invoke<string>('get_note_content', {
+        if (cancelled) return
+
+        const openContent = relevantOpenTabContentByPath[entry.path]
+        if (openContent !== undefined) {
+          highlights.push(...parseEntryHighlights(entry, openContent))
+          continue
+        }
+
+        const content = await invoke<string>('get_note_content', {
           path: entry.path,
           vaultPath: vaultPath ?? undefined,
         })
+
+        if (cancelled) return
+
         highlights.push(...parseEntryHighlights(entry, content))
       }
 
@@ -94,7 +134,7 @@ export function useHighlightsIndex({
     return () => {
       cancelled = true
     }
-  }, [enabled, indexableEntries, openTabContentByPath, vaultPath])
+  }, [enabled, indexableEntries, relevantOpenTabContentByPath, relevantOpenTabContentKey, vaultPath])
 
   return state
 }
