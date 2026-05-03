@@ -46,5 +46,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 readability = "0.3"
 htmd = "0.2"
 url = "2"
+thiserror = "1"
 
 [dev-dependencies]
+wiremock = "0.6"
