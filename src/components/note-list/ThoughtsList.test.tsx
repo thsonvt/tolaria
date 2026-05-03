@@ -60,6 +60,13 @@ describe('ThoughtsList', () => {
     render(<ThoughtsList groups={groups} loading={false} error={null} onOpenThought={vi.fn()} />)
 
     fireEvent.change(screen.getByPlaceholderText('Filter thoughts'), {
+      target: { value: 'retrieval is infrastructure' },
+    })
+
+    expect(screen.getByText('A note about retrieval quality.')).toBeInTheDocument()
+    expect(screen.getByText('retrieval is infrastructure')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByPlaceholderText('Filter thoughts'), {
       target: { value: 'missing quote' },
     })
 
