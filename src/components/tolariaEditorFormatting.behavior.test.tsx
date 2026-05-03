@@ -95,6 +95,7 @@ vi.mock('lucide-react', () => ({
   Code2: MockIcon,
   Highlighter: MockIcon,
   Italic: MockIcon,
+  MessageSquarePlus: MockIcon,
   Strikethrough: MockIcon,
 }))
 
@@ -111,6 +112,7 @@ vi.mock('./blockNoteFormattingToolbarHoverGuard', () => ({
 }))
 
 import {
+  ADD_THOUGHT_FROM_FORMATTING_TOOLBAR_EVENT,
   TolariaFormattingToolbar,
   TolariaFormattingToolbarController,
 } from './tolariaEditorFormatting'
@@ -188,6 +190,25 @@ describe('tolariaEditorFormatting behavior', () => {
 
     expect(editor.focus).toHaveBeenCalled()
     expect(editor.toggleStyles).toHaveBeenCalledWith({ highlight: true })
+  })
+
+  it('renders the add-thought action and dispatches its toolbar event', () => {
+    const editor = createMockEditor('paragraph')
+    editor.schema.styleSchema.highlight = { type: 'highlight', propSchema: 'boolean' }
+    useBlockNoteEditorMock.mockReturnValue(editor)
+    const dispatchEventSpy = vi.spyOn(window, 'dispatchEvent')
+
+    render(<TolariaFormattingToolbar />)
+
+    fireEvent.click(screen.getByRole('button', { name: /add thought/i }))
+
+    expect(dispatchEventSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: ADD_THOUGHT_FROM_FORMATTING_TOOLBAR_EVENT,
+      }),
+    )
+
+    dispatchEventSpy.mockRestore()
   })
 
   it('controls the floating toolbar placement, hover guard, and escape-key close behavior', () => {

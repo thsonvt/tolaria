@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useMemo, useRef, useContext } from 'react'
+import { useEffect, useCallback, useMemo, useRef, useContext, useState } from 'react'
 import { trackEvent } from '../lib/telemetry'
 import {
   useCreateBlockNote,
@@ -33,6 +33,14 @@ import {
   type HighlightJumpEventDetail,
   normalizeHighlightText,
 } from '../utils/highlightMarkdown'
+import {
+  THOUGHT_JUMP_EVENT,
+  THOUGHT_PULSE_CLASS,
+  createArticleThoughtDraft,
+  createSelectionThoughtDraft,
+  type ThoughtJumpEventDetail,
+  type ThoughtRecord,
+} from '../utils/thoughts'
 import { WikilinkSuggestionMenu, type WikilinkSuggestionItem } from './WikilinkSuggestionMenu'
 import type { VaultEntry } from '../types'
 import { _wikilinkEntriesRef } from './editorSchema'
@@ -45,6 +53,8 @@ import {
 import { TolariaSideMenu } from './tolariaBlockNoteSideMenu'
 import { useEditorLinkActivation } from './useEditorLinkActivation'
 import { findNearestTextCursorBlock } from './blockNoteCursorTarget'
+import { ThoughtPinsLayer } from './thoughts/ThoughtPinsLayer'
+import { ThoughtPopover } from './thoughts/ThoughtPopover'
 
 const TEST_TABLE_MARKDOWN = `| Head 1 | Head 2 | Head 3 |
 | --- | --- | --- |
@@ -81,6 +91,8 @@ const EDITOR_SHORTCUT_IGNORE_SELECTOR = [
   'select',
   'textarea',
 ].join(', ')
+const ADD_THOUGHT_FROM_FORMATTING_TOOLBAR_EVENT = 'tolaria:add-thought-from-formatting-toolbar'
+const THOUGHT_PULSE_DURATION_MS = 1400
 
 type TestTableBlock = {
   type?: string
@@ -88,6 +100,16 @@ type TestTableBlock = {
 }
 type SuggestionAction = () => void
 type SuggestionItemWithClick = { onItemClick?: SuggestionAction }
+
+function normalizeThoughtSelectionText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function thoughtErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) return error.message
+  if (typeof error === 'string' && error.trim()) return error
+  return fallback
+}
 
 function isEditorReadyForSuggestionAction(
   editor: ReturnType<typeof useCreateBlockNote>,
@@ -292,6 +314,20 @@ function isSelectionInsideElement(element: HTMLElement): boolean {
   const anchorNode = selection?.anchorNode ?? null
   const anchorElement = anchorNode instanceof Element ? anchorNode : anchorNode?.parentElement ?? null
   return Boolean(anchorElement && element.contains(anchorElement))
+}
+
+function getSelectedTextInsideElement(element: HTMLElement): string {
+  const selection = window.getSelection()
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return ''
+
+  const range = selection.getRangeAt(0)
+  if (!rangeBelongsToElement(range, element)) return ''
+
+  return normalizeThoughtSelectionText(selection.toString())
+}
+
+function resolveThoughtScrollContainer(container: HTMLElement): HTMLElement {
+  return container.closest<HTMLElement>('.editor-scroll-area') ?? container
 }
 
 const TITLE_HEADING_SELECTOR = 'h1, [data-content-type="heading"][data-level="1"], [data-content-type="heading"]:not([data-level])'
@@ -588,6 +624,118 @@ function useHighlightJumpListener(options: {
   }, [activeNotePath, containerRef])
 }
 
+function useThoughtJumpListener(options: {
+  activeNotePath?: string
+  thoughts: ThoughtRecord[]
+  containerRef: React.RefObject<HTMLDivElement | null>
+  onOpenThought: (thought: ThoughtRecord) => void
+  onThoughtJumpHandled?: (thoughtId: string) => void
+  onThoughtError?: (message: string) => void
+  pendingThoughtJump?: ThoughtRecord | null
+}) {
+  const {
+    activeNotePath,
+    thoughts,
+    containerRef,
+    onOpenThought,
+    onThoughtJumpHandled,
+    onThoughtError,
+    pendingThoughtJump,
+  } = options
+  const pulseTimeoutRef = useRef<number | null>(null)
+  const pulsingElementRef = useRef<HTMLElement | null>(null)
+  const ignoreNextThoughtEventIdRef = useRef<string | null>(null)
+
+  const pulseElement = useCallback((target: HTMLElement) => {
+    if (pulseTimeoutRef.current !== null) {
+      window.clearTimeout(pulseTimeoutRef.current)
+    }
+    pulsingElementRef.current?.classList.remove(THOUGHT_PULSE_CLASS)
+
+    target.classList.add(THOUGHT_PULSE_CLASS)
+    pulsingElementRef.current = target
+    pulseTimeoutRef.current = window.setTimeout(() => {
+      target.classList.remove(THOUGHT_PULSE_CLASS)
+      if (pulsingElementRef.current === target) {
+        pulsingElementRef.current = null
+      }
+      pulseTimeoutRef.current = null
+    }, THOUGHT_PULSE_DURATION_MS)
+  }, [])
+
+  const handleThoughtJump = useCallback((thought: ThoughtRecord, source: 'event' | 'pending') => {
+    if (!activeNotePath || thought.notePath !== activeNotePath) return false
+
+    const container = containerRef.current
+    if (!container) return false
+
+    if (source === 'pending') {
+      ignoreNextThoughtEventIdRef.current = thought.id
+    }
+
+    if (thought.anchor.type === 'article') {
+      const scrollContainer = resolveThoughtScrollContainer(container)
+      if (typeof scrollContainer.scrollTo === 'function') {
+        scrollContainer.scrollTo({ top: 0, behavior: 'smooth' })
+      } else {
+        scrollContainer.scrollTop = 0
+      }
+      onOpenThought(thought)
+      onThoughtJumpHandled?.(thought.id)
+      return true
+    }
+
+    const target = Array.from(container.querySelectorAll<HTMLElement>('.bn-block'))
+      .find((element) => element.textContent?.includes(thought.anchor.quote))
+    if (!target) {
+      onThoughtError?.('Thought anchor could not be found in this note.')
+      onThoughtJumpHandled?.(thought.id)
+      return false
+    }
+
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    pulseElement(target)
+    onOpenThought(thought)
+    onThoughtJumpHandled?.(thought.id)
+    return true
+  }, [activeNotePath, containerRef, onOpenThought, onThoughtError, onThoughtJumpHandled, pulseElement])
+
+  useEffect(() => {
+    return () => {
+      if (pulseTimeoutRef.current !== null) {
+        window.clearTimeout(pulseTimeoutRef.current)
+      }
+      pulsingElementRef.current?.classList.remove(THOUGHT_PULSE_CLASS)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!pendingThoughtJump) return
+    if (!thoughts.some((thought) => thought.id === pendingThoughtJump.id)) return
+
+    handleThoughtJump(pendingThoughtJump, 'pending')
+  }, [handleThoughtJump, pendingThoughtJump, thoughts])
+
+  useEffect(() => {
+    const handleJump = (event: Event) => {
+      const detail = (event as CustomEvent<ThoughtJumpEventDetail>).detail
+      const thought = detail?.thought
+      if (!thought) return
+      if (ignoreNextThoughtEventIdRef.current === thought.id) {
+        ignoreNextThoughtEventIdRef.current = null
+        return
+      }
+
+      handleThoughtJump(thought, 'event')
+    }
+
+    window.addEventListener(THOUGHT_JUMP_EVENT, handleJump)
+    return () => {
+      window.removeEventListener(THOUGHT_JUMP_EVENT, handleJump)
+    }
+  }, [handleThoughtJump])
+}
+
 function handleCodeBlockCopy(event: React.ClipboardEvent<HTMLDivElement>) {
   const codeText = selectedCodeBlockText({
     selection: window.getSelection(),
@@ -696,19 +844,36 @@ function useInsertImageCallback(editor: ReturnType<typeof useCreateBlockNote>) {
   }, [])
 }
 
+function resolveThoughtAnchorLabel(thought: ThoughtRecord | null): string {
+  if (!thought) return 'Whole article'
+  return thought.anchor.type === 'selection'
+    ? thought.anchor.quote
+    : 'Whole article'
+}
+
 /** Single BlockNote editor view — content is swapped via replaceBlocks */
-export function SingleEditorView({ editor, entries, activeNotePath, onNavigateWikilink, onChange, vaultPath, editable = true }: {
+export function SingleEditorView({ editor, entries, activeNotePath, activeMarkdown, thoughts = [], onNavigateWikilink, onChange, vaultPath, editable = true, onSaveThought, onDeleteThought, pendingThoughtJump, onThoughtJumpHandled, onThoughtError }: {
   editor: ReturnType<typeof useCreateBlockNote>
   entries: VaultEntry[]
   activeNotePath?: string
+  activeMarkdown?: string
+  thoughts?: ThoughtRecord[]
   onNavigateWikilink: (target: string) => void
   onChange?: () => void
   vaultPath?: string
   editable?: boolean
+  onSaveThought?: (thought: ThoughtRecord) => Promise<ThoughtRecord>
+  onDeleteThought?: (thought: ThoughtRecord) => Promise<void>
+  pendingThoughtJump?: ThoughtRecord | null
+  onThoughtJumpHandled?: (thoughtId: string) => void
+  onThoughtError?: (message: string) => void
 }) {
   const { cssVars } = useEditorTheme()
   const themeMode = useDocumentThemeMode()
   const containerRef = useRef<HTMLDivElement>(null)
+  const [draftThought, setDraftThought] = useState<ThoughtRecord | null>(null)
+  const [openThought, setOpenThought] = useState<ThoughtRecord | null>(null)
+  const [thoughtPopoverOpen, setThoughtPopoverOpen] = useState(false)
   const handleContainerClick = useEditorContainerClickHandler({ editable, editor })
   const handleEditorChange = useCompositionAwareEditorChange({ containerRef, onChange })
   const onImageUrl = useInsertImageCallback(editor)
@@ -752,9 +917,133 @@ export function SingleEditorView({ editor, entries, activeNotePath, onNavigateWi
     typeEntryMap,
     vaultPath,
   })
+  const activeThoughts = useMemo(
+    () => thoughts.filter((thought) => thought.notePath === activeNotePath),
+    [activeNotePath, thoughts],
+  )
+  const activeEntry = useMemo(
+    () => entries.find((entry) => entry.path === activeNotePath) ?? null,
+    [activeNotePath, entries],
+  )
+  const openThoughtPopover = useCallback((thought: ThoughtRecord) => {
+    setDraftThought(null)
+    setOpenThought(thought)
+    setThoughtPopoverOpen(true)
+  }, [])
+  const createThoughtFromSelection = useCallback(() => {
+    if (!editable) return
+    if (!activeNotePath || !activeEntry) return
+
+    const container = containerRef.current
+    if (!container) return
+
+    const selectedText = getSelectedTextInsideElement(container)
+    const markdown = activeMarkdown ?? ''
+    const thought = selectedText
+      ? createSelectionThoughtDraft({
+          notePath: activeNotePath,
+          noteTitle: activeEntry.title,
+          selectedText,
+          markdown,
+          bodyMarkdown: ' ',
+        })
+      : createArticleThoughtDraft({
+          notePath: activeNotePath,
+          noteTitle: activeEntry.title,
+          bodyMarkdown: ' ',
+        })
+
+    setOpenThought(null)
+    setDraftThought(thought)
+    setThoughtPopoverOpen(true)
+  }, [activeEntry, activeMarkdown, activeNotePath, editable])
+
+  useThoughtJumpListener({
+    activeNotePath,
+    thoughts: activeThoughts,
+    containerRef,
+    onOpenThought: openThoughtPopover,
+    onThoughtJumpHandled,
+    onThoughtError,
+    pendingThoughtJump,
+  })
+
+  useEffect(() => {
+    if (!editable) return
+
+    const handleAddThought = () => {
+      createThoughtFromSelection()
+    }
+
+    window.addEventListener(ADD_THOUGHT_FROM_FORMATTING_TOOLBAR_EVENT, handleAddThought)
+    return () => {
+      window.removeEventListener(ADD_THOUGHT_FROM_FORMATTING_TOOLBAR_EVENT, handleAddThought)
+    }
+  }, [createThoughtFromSelection, editable])
+
+  const displayedThought = openThought ?? draftThought
+  const thoughtAnchorLabel = resolveThoughtAnchorLabel(displayedThought)
 
   return (
     <div ref={containerRef} className={`editor__blocknote-container${isDragOver ? ' editor__blocknote-container--drag-over' : ''}`} style={cssVars as React.CSSProperties} onClick={handleContainerClick} onCopyCapture={handleCodeBlockCopy}>
+      {activeNotePath && activeMarkdown && (
+        <ThoughtPinsLayer
+          thoughts={activeThoughts}
+          markdown={activeMarkdown}
+          onOpenThought={openThoughtPopover}
+        />
+      )}
+      <ThoughtPopover
+        open={thoughtPopoverOpen}
+        anchorLabel={thoughtAnchorLabel}
+        thought={displayedThought}
+        initialBody={draftThought?.bodyMarkdown}
+        trigger={<button type="button" className="sr-only" tabIndex={-1} aria-hidden="true">Thought</button>}
+        onOpenChange={(open) => {
+          setThoughtPopoverOpen(open)
+          if (!open) {
+            setDraftThought(null)
+            setOpenThought(null)
+          }
+        }}
+        onSave={async (bodyMarkdown) => {
+          const thoughtToSave = displayedThought
+          if (!thoughtToSave) return
+          if (!onSaveThought) {
+            onThoughtError?.('Thoughts could not be saved right now.')
+            return
+          }
+
+          const timestamp = new Date().toISOString()
+          const nextThought: ThoughtRecord = {
+            ...thoughtToSave,
+            bodyMarkdown,
+            createdAt: thoughtToSave.createdAt || timestamp,
+            updatedAt: timestamp,
+          }
+
+          try {
+            await onSaveThought(nextThought)
+            setDraftThought(null)
+            setOpenThought(null)
+          } catch (error) {
+            onThoughtError?.(thoughtErrorMessage(error, 'Thought could not be saved.'))
+            throw error
+          }
+        }}
+        onDelete={displayedThought && openThought && onDeleteThought
+          ? async () => {
+              try {
+                await onDeleteThought(openThought)
+                setOpenThought(null)
+                setDraftThought(null)
+              } catch (error) {
+                onThoughtError?.(thoughtErrorMessage(error, 'Thought could not be deleted.'))
+                throw error
+              }
+            }
+          : undefined}
+      />
       {isDragOver && (
         <div className="editor__drop-overlay">
           <div className="editor__drop-overlay-label">Drop image here</div>

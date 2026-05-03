@@ -48,6 +48,7 @@ import {
   Code2,
   Highlighter,
   Italic,
+  MessageSquarePlus,
   Strikethrough,
   type LucideIcon,
 } from 'lucide-react'
@@ -60,6 +61,7 @@ import { useBlockNoteFormattingToolbarHoverGuard } from './blockNoteFormattingTo
 type TolariaBasicTextStyle = 'bold' | 'italic' | 'strike' | 'highlight' | 'code'
 
 const FORMATTER_CLOSE_GRACE_MS = 160
+export const ADD_THOUGHT_FROM_FORMATTING_TOOLBAR_EVENT = 'tolaria:add-thought-from-formatting-toolbar'
 
 function isFocusStillWithinToolbar(
   currentTarget: EventTarget & Element,
@@ -400,6 +402,38 @@ function TolariaBasicTextStyleButton({
   )
 }
 
+function TolariaAddThoughtButton() {
+  const Components = useComponentsContext()!
+  const editor = useBlockNoteEditor<
+    BlockSchema,
+    InlineContentSchema,
+    StyleSchema
+  >()
+  const isVisible = useEditorState({
+    editor,
+    selector: ({ editor }) => editor.isEditable && selectionSupportsInlineFormatting(editor),
+  })
+
+  if (!isVisible) return null
+
+  return (
+    <Components.FormattingToolbar.Button
+      className="bn-button"
+      data-test="add-thought"
+      onClick={() => {
+        window.dispatchEvent(
+          new CustomEvent(ADD_THOUGHT_FROM_FORMATTING_TOOLBAR_EVENT),
+        )
+      }}
+      isSelected={false}
+      label="Add thought"
+      mainTooltip="Add thought"
+      secondaryTooltip="Save a note on this passage"
+      icon={<MessageSquarePlus />}
+    />
+  )
+}
+
 function TolariaBlockTypeSelect() {
   const editor = useBlockNoteEditor<
     BlockSchema,
@@ -492,6 +526,7 @@ function insertHighlightAndInlineCodeButtons(items: ReactElement[]) {
     ...items.slice(0, strikeButtonIndex + 1),
     <TolariaBasicTextStyleButton basicTextStyle="highlight" key="highlightStyleButton" />,
     <TolariaBasicTextStyleButton basicTextStyle="code" key="codeStyleButton" />,
+    <TolariaAddThoughtButton key="addThoughtButton" />,
     ...items.slice(strikeButtonIndex + 1),
   ]
 }

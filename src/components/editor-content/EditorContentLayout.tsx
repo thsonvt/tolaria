@@ -194,10 +194,17 @@ function EditorCanvas({
   editor,
   entries,
   activeTab,
+  activeMarkdown,
+  thoughts,
   onNavigateWikilink,
   onEditorChange,
   isDeletedPreview,
   vaultPath,
+  onSaveThought,
+  onDeleteThought,
+  pendingThoughtJump,
+  onThoughtJumpHandled,
+  onThoughtError,
 }: Pick<
   EditorContentModel,
   | 'showEditor'
@@ -205,10 +212,17 @@ function EditorCanvas({
   | 'editor'
   | 'entries'
   | 'activeTab'
+  | 'activeMarkdown'
+  | 'thoughts'
   | 'onNavigateWikilink'
   | 'onEditorChange'
   | 'isDeletedPreview'
   | 'vaultPath'
+  | 'onSaveThought'
+  | 'onDeleteThought'
+  | 'pendingThoughtJump'
+  | 'onThoughtJumpHandled'
+  | 'onThoughtError'
 >) {
   if (!showEditor) return null
 
@@ -219,10 +233,17 @@ function EditorCanvas({
           editor={editor}
           entries={entries}
           activeNotePath={activeTab?.entry.path}
+          activeMarkdown={activeMarkdown}
+          thoughts={thoughts}
           onNavigateWikilink={onNavigateWikilink}
           onChange={onEditorChange}
           vaultPath={vaultPath}
           editable={!isDeletedPreview}
+          onSaveThought={onSaveThought}
+          onDeleteThought={onDeleteThought}
+          pendingThoughtJump={pendingThoughtJump}
+          onThoughtJumpHandled={onThoughtJumpHandled}
+          onThoughtError={onThoughtError}
         />
       </div>
     </EditorFindScope>
@@ -292,6 +313,13 @@ export function EditorContentLayout(model: EditorContentModel) {
     rawModeContent,
     noteLayout,
     findRequest,
+    activeMarkdown,
+    thoughts,
+    onSaveThought,
+    onDeleteThought,
+    pendingThoughtJump,
+    onThoughtJumpHandled,
+    onThoughtError,
     locale,
   } = model
   const rootClassName = cn(
@@ -369,9 +397,16 @@ export function EditorContentLayout(model: EditorContentModel) {
         vaultPath={vaultPath}
         editor={editor}
         entries={entries}
+        activeMarkdown={activeMarkdown}
+        thoughts={thoughts}
         onNavigateWikilink={onNavigateWikilink}
         onEditorChange={onEditorChange}
         isDeletedPreview={isDeletedPreview}
+        onSaveThought={onSaveThought}
+        onDeleteThought={onDeleteThought}
+        pendingThoughtJump={pendingThoughtJump}
+        onThoughtJumpHandled={onThoughtJumpHandled}
+        onThoughtError={onThoughtError}
       />
       {isLoadingNewTab && showEditor && <EditorLoadingSkeleton />}
     </div>

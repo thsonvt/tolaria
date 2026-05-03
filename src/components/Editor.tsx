@@ -29,6 +29,7 @@ import { useRawModeWithFlush } from './useRawModeWithFlush'
 import { createArrowLigaturesExtension } from './arrowLigaturesExtension'
 import { createMathInputExtension } from './mathInputExtension'
 import { useFilenameAutolinkGuard } from './useFilenameAutolinkGuard'
+import type { ThoughtRecord } from '../utils/thoughts'
 import './Editor.css'
 import './EditorTheme.css'
 
@@ -41,6 +42,8 @@ interface EditorProps {
   tabs: Tab[]
   activeTabPath: string | null
   entries: VaultEntry[]
+  thoughts?: ThoughtRecord[]
+  activeMarkdown?: string
   onNavigateWikilink: (target: string) => void
   onUnsupportedAiPaste?: (message: string) => void
   onLoadDiff?: (path: string) => Promise<string>
@@ -105,6 +108,11 @@ interface EditorProps {
   onKeepMine?: (path: string) => void
   /** Resolve conflict by keeping the remote version. */
   onKeepTheirs?: (path: string) => void
+  onSaveThought?: (thought: ThoughtRecord) => Promise<ThoughtRecord>
+  onDeleteThought?: (thought: ThoughtRecord) => Promise<void>
+  pendingThoughtJump?: ThoughtRecord | null
+  onThoughtJumpHandled?: (thoughtId: string) => void
+  onThoughtError?: (message: string) => void
   /** Registers a hook that flushes the raw editor buffer into app state before external actions. */
   flushPendingRawContentRef?: React.MutableRefObject<((path: string) => void) | null>
   locale?: AppLocale
@@ -327,6 +335,8 @@ function EditorLayout({
   isLoadingNewTab,
   entries,
   editor,
+  thoughts,
+  activeMarkdown,
   diffMode,
   diffContent,
   diffLoading,
@@ -362,6 +372,11 @@ function EditorLayout({
   isConflicted,
   onKeepMine,
   onKeepTheirs,
+  onSaveThought,
+  onDeleteThought,
+  pendingThoughtJump,
+  onThoughtJumpHandled,
+  onThoughtError,
   onInspectorResize,
   inspectorWidth,
   defaultAiAgent,
@@ -390,6 +405,8 @@ function EditorLayout({
   isLoadingNewTab: boolean
   entries: VaultEntry[]
   editor: ReturnType<typeof useCreateBlockNote>
+  thoughts?: ThoughtRecord[]
+  activeMarkdown?: string
   diffMode: boolean
   diffContent: string | null
   diffLoading: boolean
@@ -425,6 +442,11 @@ function EditorLayout({
   isConflicted?: boolean
   onKeepMine?: (path: string) => void
   onKeepTheirs?: (path: string) => void
+  onSaveThought?: (thought: ThoughtRecord) => Promise<ThoughtRecord>
+  onDeleteThought?: (thought: ThoughtRecord) => Promise<void>
+  pendingThoughtJump?: ThoughtRecord | null
+  onThoughtJumpHandled?: (thoughtId: string) => void
+  onThoughtError?: (message: string) => void
   onInspectorResize: (delta: number) => void
   inspectorWidth: number
   defaultAiAgent: AiAgentId
@@ -469,6 +491,8 @@ function EditorLayout({
               isLoadingNewTab={isLoadingNewTab}
               entries={entries}
               editor={editor}
+              thoughts={thoughts}
+              activeMarkdown={activeMarkdown}
               diffMode={diffMode}
               diffContent={diffContent}
               diffLoading={diffLoading}
@@ -502,6 +526,11 @@ function EditorLayout({
               isConflicted={isConflicted}
               onKeepMine={onKeepMine}
               onKeepTheirs={onKeepTheirs}
+              onSaveThought={onSaveThought}
+              onDeleteThought={onDeleteThought}
+              pendingThoughtJump={pendingThoughtJump}
+              onThoughtJumpHandled={onThoughtJumpHandled}
+              onThoughtError={onThoughtError}
               locale={locale}
             />
         }
@@ -547,6 +576,8 @@ function EditorLayout({
 export const Editor = memo(function Editor(props: EditorProps) {
   const {
     tabs, activeTabPath, entries, onNavigateWikilink,
+    thoughts,
+    activeMarkdown,
     getNoteStatus,
     inspectorCollapsed, onToggleInspector, inspectorWidth,
     defaultAiAgent = DEFAULT_AI_AGENT, defaultAiAgentReadiness, defaultAiAgentReady = true,
@@ -563,6 +594,7 @@ export const Editor = memo(function Editor(props: EditorProps) {
     noteLayout, onToggleNoteLayout,
     onFileCreated, onFileModified, onVaultChanged,
     isConflicted, onKeepMine, onKeepTheirs,
+    onSaveThought, onDeleteThought, pendingThoughtJump, onThoughtJumpHandled, onThoughtError,
     flushPendingRawContentRef, findInNoteRef,
     locale,
   } = props
@@ -597,6 +629,8 @@ export const Editor = memo(function Editor(props: EditorProps) {
     flushPendingRawContentRef,
   })
 
+  const resolvedActiveMarkdown = activeMarkdown ?? activeTab?.content ?? undefined
+
   return (
     <EditorLayout
       tabs={tabs}
@@ -604,6 +638,8 @@ export const Editor = memo(function Editor(props: EditorProps) {
       isLoadingNewTab={isLoadingNewTab}
       entries={entries}
       editor={editor}
+      thoughts={thoughts}
+      activeMarkdown={resolvedActiveMarkdown}
       diffMode={diffMode}
       diffContent={diffContent}
       diffLoading={diffLoading}
@@ -639,6 +675,11 @@ export const Editor = memo(function Editor(props: EditorProps) {
       isConflicted={isConflicted}
       onKeepMine={onKeepMine}
       onKeepTheirs={onKeepTheirs}
+      onSaveThought={onSaveThought}
+      onDeleteThought={onDeleteThought}
+      pendingThoughtJump={pendingThoughtJump}
+      onThoughtJumpHandled={onThoughtJumpHandled}
+      onThoughtError={onThoughtError}
       onInspectorResize={onInspectorResize}
       inspectorWidth={inspectorWidth}
       defaultAiAgent={defaultAiAgent}

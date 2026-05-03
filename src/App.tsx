@@ -75,6 +75,7 @@ import { useNoteRetargetingUi } from './hooks/useNoteRetargetingUi'
 import { useVaultBridge } from './hooks/useVaultBridge'
 import { useSavedViewOrdering } from './hooks/useSavedViewOrdering'
 import { useHighlightsIndex } from './hooks/useHighlightsIndex'
+import { useThoughtsIndex } from './hooks/useThoughtsIndex'
 import { createViewFilename } from './utils/viewFilename'
 import { nextViewOrder } from './utils/viewOrdering'
 import type { CommitDiffRequest } from './hooks/useDiffMode'
@@ -130,6 +131,11 @@ import {
   type HighlightJumpEventDetail,
   type HighlightExcerpt,
 } from './utils/highlightMarkdown'
+import {
+  THOUGHT_JUMP_EVENT,
+  type ThoughtJumpEventDetail,
+  type ThoughtRecord,
+} from './utils/thoughts'
 import './App.css'
 
 // Type declarations for mock content storage and test overrides
@@ -1513,6 +1519,7 @@ function App() {
     [notes.tabs],
   )
   const isHighlightsView = effectiveSelection.kind === 'filter' && effectiveSelection.filter === 'highlights'
+  const isThoughtsView = effectiveSelection.kind === 'filter' && effectiveSelection.filter === 'thoughts'
   const highlightsIndex = useHighlightsIndex({
     entries: vault.entries,
     enabled: isHighlightsView,
@@ -1520,6 +1527,12 @@ function App() {
     openTabContentByPath,
   })
   const [pendingHighlightJump, setPendingHighlightJump] = useState<HighlightExcerpt | null>(null)
+  const thoughtsIndex = useThoughtsIndex({
+    entries: vault.entries,
+    enabled: Boolean(resolvedPath && (activeTab || isThoughtsView)),
+    vaultPath: resolvedPath,
+  })
+  const [pendingThoughtJump, setPendingThoughtJump] = useState<ThoughtRecord | null>(null)
 
   useEffect(() => {
     if (!pendingHighlightJump || activeTab?.entry.path !== pendingHighlightJump.notePath) return
@@ -1535,6 +1548,19 @@ function App() {
     return () => cancelAnimationFrame(frame)
   }, [activeTab, pendingHighlightJump])
 
+  useEffect(() => {
+    if (!pendingThoughtJump || activeTab?.entry.path !== pendingThoughtJump.notePath) return
+
+    const thought = pendingThoughtJump
+    const frame = requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent<ThoughtJumpEventDetail>(THOUGHT_JUMP_EVENT, {
+        detail: { thought },
+      }))
+    })
+
+    return () => cancelAnimationFrame(frame)
+  }, [activeTab, pendingThoughtJump])
+
   const handleOpenHighlight = useCallback(async (highlight: HighlightExcerpt) => {
     const entry = vault.entries.find((candidate) => candidate.path === highlight.notePath)
     if (!entry) {
@@ -1549,6 +1575,24 @@ function App() {
       setPendingHighlightJump((current) => current?.id === highlight.id ? null : current)
     }
   }, [notes, vault.entries])
+
+  const handleOpenThought = useCallback(async (thought: ThoughtRecord) => {
+    const entry = vault.entries.find((candidate) => candidate.path === thought.notePath)
+    if (!entry) {
+      setToastMessage('Thought source note could not be found.')
+      return
+    }
+
+    setPendingThoughtJump(thought)
+    await notes.handleReplaceActiveTab(entry)
+    if (notes.activeTabPathRef.current !== thought.notePath) {
+      setPendingThoughtJump((current) => current?.id === thought.id ? null : current)
+    }
+  }, [notes, vault.entries])
+
+  const handleThoughtJumpHandled = useCallback((thoughtId: string) => {
+    setPendingThoughtJump((current) => current?.id === thoughtId ? null : current)
+  }, [])
 
   const inboxCount = useMemo(() => filterInboxEntries(vault.entries, inboxPeriod).length, [vault.entries, inboxPeriod])
 
@@ -1640,7 +1684,7 @@ function App() {
           {sidebarVisible && (
             <>
               <div className="app__sidebar" style={{ width: layout.sidebarWidth }}>
-                <Sidebar entries={vault.entries} folders={vault.folders} views={vault.views} selection={effectiveSelection} onSelect={handleSetSelection} onSelectNote={notes.handleSelectNote} onSelectFavorite={handleOpenFavorite} onReorderFavorites={entryActions.handleReorderFavorites} onCreateType={notes.handleCreateNoteImmediate} onCreateNewType={dialogs.openCreateType} onCustomizeType={entryActions.handleCustomizeType} onUpdateTypeTemplate={entryActions.handleUpdateTypeTemplate} onReorderSections={entryActions.handleReorderSections} onRenameSection={entryActions.handleRenameSection} onToggleTypeVisibility={entryActions.handleToggleTypeVisibility} onCreateFolder={handleCreateFolder} onRenameFolder={folderActions.renameFolder} onDeleteFolder={folderActions.requestDeleteFolder} folderFileActions={fileActions.folderActions} renamingFolderPath={folderActions.renamingFolderPath} onStartRenameFolder={folderActions.startFolderRename} onCancelRenameFolder={folderActions.cancelFolderRename} onCreateView={dialogs.openCreateView} onEditView={handleEditView} onDeleteView={handleDeleteView} onReorderViews={viewOrdering.onReorderViews} onMoveView={viewOrdering.onMoveView} showInbox={explicitOrganizationEnabled} inboxCount={inboxCount} highlightCount={highlightsIndex.highlights.length} locale={appLocale} />
+                <Sidebar entries={vault.entries} folders={vault.folders} views={vault.views} selection={effectiveSelection} onSelect={handleSetSelection} onSelectNote={notes.handleSelectNote} onSelectFavorite={handleOpenFavorite} onReorderFavorites={entryActions.handleReorderFavorites} onCreateType={notes.handleCreateNoteImmediate} onCreateNewType={dialogs.openCreateType} onCustomizeType={entryActions.handleCustomizeType} onUpdateTypeTemplate={entryActions.handleUpdateTypeTemplate} onReorderSections={entryActions.handleReorderSections} onRenameSection={entryActions.handleRenameSection} onToggleTypeVisibility={entryActions.handleToggleTypeVisibility} onCreateFolder={handleCreateFolder} onRenameFolder={folderActions.renameFolder} onDeleteFolder={folderActions.requestDeleteFolder} folderFileActions={fileActions.folderActions} renamingFolderPath={folderActions.renamingFolderPath} onStartRenameFolder={folderActions.startFolderRename} onCancelRenameFolder={folderActions.cancelFolderRename} onCreateView={dialogs.openCreateView} onEditView={handleEditView} onDeleteView={handleDeleteView} onReorderViews={viewOrdering.onReorderViews} onMoveView={viewOrdering.onMoveView} showInbox={explicitOrganizationEnabled} inboxCount={inboxCount} highlightCount={highlightsIndex.highlights.length} thoughtCount={thoughtsIndex.thoughts.length} locale={appLocale} />
               </div>
               <ResizeHandle onResize={layout.handleSidebarResize} />
             </>
@@ -1651,7 +1695,7 @@ function App() {
                 {effectiveSelection.kind === 'filter' && effectiveSelection.filter === 'pulse' ? (
                   <PulseView vaultPath={resolvedPath} onOpenNote={handlePulseOpenNote} sidebarCollapsed={!sidebarVisible} onExpandSidebar={() => handleSetViewMode('all')} locale={appLocale} />
                 ) : (
-                  <NoteList entries={vault.entries} selection={effectiveSelection} selectedNote={activeTab?.entry ?? null} noteListFilter={noteListFilter} onNoteListFilterChange={setNoteListFilter} inboxPeriod={inboxPeriod} modifiedFiles={vault.modifiedFiles} modifiedFilesError={vault.modifiedFilesError} getNoteStatus={vault.getNoteStatus} sidebarCollapsed={!sidebarVisible} onSelectNote={notes.handleSelectNote} onReplaceActiveTab={handleReplaceActiveTabWithQueuedDiff} onEnterNeighborhood={handleEnterNeighborhood} onCreateNote={notes.handleCreateNoteImmediate} onBulkOrganize={explicitOrganizationEnabled ? bulkActions.handleBulkOrganize : undefined} onBulkArchive={bulkActions.handleBulkArchive} onBulkDeletePermanently={deleteActions.handleBulkDeletePermanently} onUpdateTypeSort={notes.handleUpdateFrontmatter} onUpdateViewDefinition={handleUpdateViewDefinition} updateEntry={vault.updateEntry} onOpenInNewWindow={handleOpenEntryInNewWindow} onDiscardFile={handleDiscardFile} onOpenDeletedNote={handleOpenDeletedNote} allNotesNoteListProperties={vaultConfig.allNotes?.noteListProperties ?? null} onUpdateAllNotesNoteListProperties={handleUpdateAllNotesNoteListProperties} inboxNoteListProperties={vaultConfig.inbox?.noteListProperties ?? null} onUpdateInboxNoteListProperties={handleUpdateInboxNoteListProperties} views={vault.views} visibleNotesRef={visibleNotesRef} highlightGroups={highlightsIndex.groups} highlightLoading={highlightsIndex.loading} highlightError={highlightsIndex.error} onOpenHighlight={handleOpenHighlight} multiSelectionCommandRef={multiSelectionCommandRef} locale={appLocale} />
+                  <NoteList entries={vault.entries} selection={effectiveSelection} selectedNote={activeTab?.entry ?? null} noteListFilter={noteListFilter} onNoteListFilterChange={setNoteListFilter} inboxPeriod={inboxPeriod} modifiedFiles={vault.modifiedFiles} modifiedFilesError={vault.modifiedFilesError} getNoteStatus={vault.getNoteStatus} sidebarCollapsed={!sidebarVisible} onSelectNote={notes.handleSelectNote} onReplaceActiveTab={handleReplaceActiveTabWithQueuedDiff} onEnterNeighborhood={handleEnterNeighborhood} onCreateNote={notes.handleCreateNoteImmediate} onBulkOrganize={explicitOrganizationEnabled ? bulkActions.handleBulkOrganize : undefined} onBulkArchive={bulkActions.handleBulkArchive} onBulkDeletePermanently={deleteActions.handleBulkDeletePermanently} onUpdateTypeSort={notes.handleUpdateFrontmatter} onUpdateViewDefinition={handleUpdateViewDefinition} updateEntry={vault.updateEntry} onOpenInNewWindow={handleOpenEntryInNewWindow} onDiscardFile={handleDiscardFile} onOpenDeletedNote={handleOpenDeletedNote} allNotesNoteListProperties={vaultConfig.allNotes?.noteListProperties ?? null} onUpdateAllNotesNoteListProperties={handleUpdateAllNotesNoteListProperties} inboxNoteListProperties={vaultConfig.inbox?.noteListProperties ?? null} onUpdateInboxNoteListProperties={handleUpdateInboxNoteListProperties} views={vault.views} visibleNotesRef={visibleNotesRef} highlightGroups={highlightsIndex.groups} highlightLoading={highlightsIndex.loading} highlightError={highlightsIndex.error} onOpenHighlight={handleOpenHighlight} thoughtGroups={thoughtsIndex.groups} thoughtLoading={thoughtsIndex.loading} thoughtError={thoughtsIndex.error} onOpenThought={handleOpenThought} multiSelectionCommandRef={multiSelectionCommandRef} locale={appLocale} />
                 )}
               </div>
               <ResizeHandle onResize={layout.handleNoteListResize} />
@@ -1662,6 +1706,8 @@ function App() {
               tabs={notes.tabs}
               activeTabPath={notes.activeTabPath}
               entries={vault.entries}
+              thoughts={thoughtsIndex.thoughts}
+              activeMarkdown={activeTab?.content ?? undefined}
               onNavigateWikilink={notes.handleNavigateWikilink}
               onLoadDiff={vault.loadDiff}
               onLoadDiffAtCommit={vault.loadDiffAtCommit}
@@ -1719,6 +1765,11 @@ function App() {
               isConflicted={conflictFlow.isConflicted}
               onKeepMine={conflictFlow.handleKeepMine}
               onKeepTheirs={conflictFlow.handleKeepTheirs}
+              onSaveThought={thoughtsIndex.saveThought}
+              onDeleteThought={thoughtsIndex.deleteThought}
+              pendingThoughtJump={pendingThoughtJump}
+              onThoughtJumpHandled={handleThoughtJumpHandled}
+              onThoughtError={setToastMessage}
               flushPendingRawContentRef={flushPendingRawContentRef}
               locale={appLocale}
             />

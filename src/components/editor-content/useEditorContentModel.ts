@@ -3,6 +3,7 @@ import { useRef } from 'react'
 import type { useCreateBlockNote } from '@blocknote/react'
 import type { AppLocale } from '../../lib/i18n'
 import type { NoteLayout, NoteStatus, VaultEntry } from '../../types'
+import type { ThoughtRecord } from '../../utils/thoughts'
 import { useEditorTheme } from '../../hooks/useTheme'
 import { deriveEditorContentState } from './editorContentState'
 import type { RawEditorFindRequest } from '../RawEditorFindBar'
@@ -17,6 +18,8 @@ export interface EditorContentProps {
   isLoadingNewTab: boolean
   entries: VaultEntry[]
   editor: ReturnType<typeof useCreateBlockNote>
+  thoughts?: ThoughtRecord[]
+  activeMarkdown?: string
   diffMode: boolean
   diffContent: string | null
   diffLoading: boolean
@@ -50,6 +53,11 @@ export interface EditorContentProps {
   isConflicted?: boolean
   onKeepMine?: (path: string) => void
   onKeepTheirs?: (path: string) => void
+  onSaveThought?: (thought: ThoughtRecord) => Promise<ThoughtRecord>
+  onDeleteThought?: (thought: ThoughtRecord) => Promise<void>
+  pendingThoughtJump?: ThoughtRecord | null
+  onThoughtJumpHandled?: (thoughtId: string) => void
+  onThoughtError?: (message: string) => void
   locale?: AppLocale
 }
 
