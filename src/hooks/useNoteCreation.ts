@@ -123,50 +123,11 @@ export function resolveNewNote({ title, type, vaultPath, template }: NewNotePara
 export interface NewTypeParams {
   typeName: string
   vaultPath: string
-  typeDirectory?: string
 }
 
-const DEFAULT_TYPE_DEFINITION_DIR = 'type'
-const TYPE_DEFINITION_DIRS = new Set([DEFAULT_TYPE_DEFINITION_DIR, 'types'])
-
-interface RelativePathParams {
-  entryPath: string
-  vaultPath: string
-}
-
-interface TypeDirectoryParams {
-  entry: VaultEntry
-  vaultPath: string
-}
-
-function relativePathFromVault({ entryPath, vaultPath }: RelativePathParams): string | null {
-  const normalizedPath = entryPath.replace(/\\/g, '/')
-  const normalizedVaultPath = vaultPath.replace(/\\/g, '/').replace(/\/+$/, '')
-  const prefix = `${normalizedVaultPath}/`
-  if (normalizedPath.toLocaleLowerCase().startsWith(prefix.toLocaleLowerCase())) {
-    return normalizedPath.slice(prefix.length)
-  }
-  return null
-}
-
-function typeDirectoryFromEntry({ entry, vaultPath }: TypeDirectoryParams): string | null {
-  const relativePath = relativePathFromVault({ entryPath: entry.path, vaultPath })
-  const directory = relativePath?.replace(/\\/g, '/').split('/').filter(Boolean)[0] ?? null
-  return directory && TYPE_DEFINITION_DIRS.has(directory.toLocaleLowerCase()) ? directory : null
-}
-
-function resolveTypeDefinitionDirectory(entries: VaultEntry[], vaultPath: string): string {
-  for (const entry of entries) {
-    if (entry.isA !== 'Type') continue
-    const directory = typeDirectoryFromEntry({ entry, vaultPath })
-    if (directory?.toLocaleLowerCase() === 'types') return directory
-  }
-  return DEFAULT_TYPE_DEFINITION_DIR
-}
-
-export function resolveNewType({ typeName, vaultPath, typeDirectory = DEFAULT_TYPE_DEFINITION_DIR }: NewTypeParams): { entry: VaultEntry; content: string } {
+export function resolveNewType({ typeName, vaultPath }: NewTypeParams): { entry: VaultEntry; content: string } {
   const slug = slugify(typeName)
-  const entry = buildNewEntry({ path: `${vaultPath}/${typeDirectory}/${slug}.md`, slug, title: typeName, type: 'Type', status: null })
+  const entry = buildNewEntry({ path: `${vaultPath}/${slug}.md`, slug, title: typeName, type: 'Type', status: null })
   return { entry, content: `---\ntype: Type\n---\n\n# ${typeName}\n` }
 }
 
@@ -238,8 +199,7 @@ export function planNewTypeCreation({
   const existingType = findEquivalentTypeEntry(entries, typeName)
   if (existingType) return { status: 'existing', entry: existingType }
 
-  const typeDirectory = resolveTypeDefinitionDirectory(entries, vaultPath)
-  const resolved = resolveNewType({ typeName, vaultPath, typeDirectory })
+  const resolved = resolveNewType({ typeName, vaultPath })
   return { status: 'create', resolved }
 }
 
@@ -264,6 +224,26 @@ export function persistNewNote(path: string, content: string): Promise<void> {
   return invoke<void>('create_note_content', { path, content }).then(() => {})
 }
 
+async function typeTargetExistsOnDisk(path: string): Promise<boolean> {
+  if (!isTauri()) return false
+
+  try {
+    await invoke<string>('get_note_content', { path })
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function findTypeTargetCollision(resolved: ResolvedEntry): Promise<string | null> {
+  if (!await typeTargetExistsOnDisk(resolved.entry.path)) return null
+  return buildCreationCollisionMessage({
+    noun: 'type',
+    title: resolved.entry.title,
+    path: resolved.entry.path,
+  })
+}
+
 // Rapid Cmd+N bursts can outpace the note-list render path on desktop. Keep
 // the first create immediate, then serialize the rest so each new note settles
 // before the next one is opened.
@@ -284,7 +264,7 @@ function signalFocusEditor(opts?: { selectTitle?: boolean; path?: string }): voi
 interface PersistCallbacks {
   onStart?: (p: string) => void
   onEnd?: (p: string) => void
-  onPersisted?: () => void
+  onPersisted?: (path: string) => void
 }
 
 /** Persist to disk; track pending state via onStart/onEnd. */
@@ -292,7 +272,7 @@ async function persistOptimistic(path: string, content: string, cbs: PersistCall
   cbs.onStart?.(path)
   try {
     await persistNewNote(path, content)
-    cbs.onPersisted?.()
+    cbs.onPersisted?.(path)
   } finally {
     cbs.onEnd?.(path)
   }
@@ -369,6 +349,12 @@ async function createTypeFromName({
     return false
   }
 
+  const collisionMessage = await findTypeTargetCollision(plan.resolved)
+  if (collisionMessage) {
+    setToastMessage(collisionMessage)
+    return false
+  }
+
   try {
     await persistResolvedEntry(plan.resolved)
     trackEvent('type_created')
@@ -393,6 +379,12 @@ async function createTypeSilently({
     throw new Error(plan.message)
   }
 
+  const collisionMessage = await findTypeTargetCollision(plan.resolved)
+  if (collisionMessage) {
+    setToastMessage(collisionMessage)
+    throw new Error(collisionMessage)
+  }
+
   try {
     await persistResolvedEntry(plan.resolved, { openTab: false })
     return plan.resolved.entry
@@ -410,7 +402,7 @@ interface ImmediateCreateDeps {
   pendingSlugs: Set<string>
   openTabWithContent: (entry: VaultEntry, content: string) => void
   addEntry: (entry: VaultEntry) => void
-  onNewNotePersisted?: () => void
+  onNewNotePersisted?: (path: string) => void
   removePendingSave?: (path: string) => void
   setToastMessage: (msg: string | null) => void
 }
@@ -425,7 +417,7 @@ interface ImmediateCreateQueueConfig {
   vaultPath: string
   addEntry: (entry: VaultEntry) => void
   openTabWithContent: (entry: VaultEntry, content: string) => void
-  onNewNotePersisted?: () => void
+  onNewNotePersisted?: (path: string) => void
   removePendingSave?: (path: string) => void
   setToastMessage: (msg: string | null) => void
 }
@@ -478,7 +470,7 @@ async function createNoteImmediate(deps: ImmediateCreateDeps, type?: string): Pr
   const didPersist = await persistImmediateEntry(deps, entry, content)
   if (!didPersist) return false
 
-  cacheNoteContent(entry.path, content)
+  cacheNoteContent(entry.path, content, entry)
   deps.openTabWithContent(entry, content)
   addEntryWithMock(entry, content, deps.addEntry)
   signalFocusEditor({ path: entry.path, selectTitle: true })
@@ -544,18 +536,26 @@ function useImmediateCreateQueue(config: ImmediateCreateQueueConfig): (type?: st
   const queuedImmediateCreatesRef = useRef<ImmediateCreateRequest[]>([])
   const immediateCreateLockedRef = useRef(false)
   const immediateCreateTimerRef = useRef<number | null>(null)
+  const queueMountedRef = useRef(true)
   const { latestDepsRef, syncDeps } = useLatestImmediateCreateDeps(config, pendingSlugsRef)
 
-  const executeRequest = useCallback((request: ImmediateCreateRequest) => {
+  const executeRequest = useCallback(async (request: ImmediateCreateRequest): Promise<void> => {
     const deps = latestDepsRef.current
     if (!deps) return
-    void createNoteImmediate(deps, request.type).then((didCreate) => trackImmediateCreate(request, didCreate))
+
+    try {
+      const didCreate = await createNoteImmediate(deps, request.type)
+      trackImmediateCreate(request, didCreate)
+    } catch (error) {
+      console.warn('Failed to create immediate note:', error)
+    }
   }, [latestDepsRef])
 
   const scheduleQueuedBurst = useCallback(function scheduleQueuedBurst() {
+    if (!queueMountedRef.current) return
     if (immediateCreateTimerRef.current !== null) return
 
-    immediateCreateTimerRef.current = window.setTimeout(() => {
+    immediateCreateTimerRef.current = window.setTimeout(async () => {
       immediateCreateTimerRef.current = null
       const next = queuedImmediateCreatesRef.current.shift()
       if (!next) {
@@ -563,14 +563,18 @@ function useImmediateCreateQueue(config: ImmediateCreateQueueConfig): (type?: st
         return
       }
 
-      executeRequest(next)
+      await executeRequest(next)
       scheduleQueuedBurst()
     }, RAPID_CREATE_NOTE_SETTLE_MS)
   }, [executeRequest])
 
-  useEffect(() => () => {
-    if (immediateCreateTimerRef.current !== null) {
-      window.clearTimeout(immediateCreateTimerRef.current)
+  useEffect(() => {
+    queueMountedRef.current = true
+    return () => {
+      queueMountedRef.current = false
+      if (immediateCreateTimerRef.current !== null) {
+        window.clearTimeout(immediateCreateTimerRef.current)
+      }
     }
   }, [])
 
@@ -583,8 +587,7 @@ function useImmediateCreateQueue(config: ImmediateCreateQueueConfig): (type?: st
     }
 
     immediateCreateLockedRef.current = true
-    executeRequest(request)
-    scheduleQueuedBurst()
+    void executeRequest(request).then(scheduleQueuedBurst)
   }, [syncDeps, executeRequest, scheduleQueuedBurst])
 }
 
@@ -600,7 +603,7 @@ export interface NoteCreationConfig {
   clearUnsaved?: (path: string) => void
   unsavedPaths?: Set<string>
   markContentPending?: (path: string, content: string) => void
-  onNewNotePersisted?: () => void
+  onNewNotePersisted?: (path: string) => void
   onTypeStateChanged?: () => void | Promise<void>
 }
 

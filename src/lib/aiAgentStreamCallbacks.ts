@@ -8,6 +8,10 @@ import {
   type ToolInvocation,
 } from './aiAgentMessageState'
 import { getAiAgentDefinition, type AiAgentId } from './aiAgents'
+import {
+  trackAiAgentResponseCompleted,
+  trackAiAgentResponseFailed,
+} from './productAnalytics'
 
 export interface StreamMutationContext {
   agent: AiAgentId
@@ -22,9 +26,17 @@ export interface StreamMutationContext {
 }
 
 function finalResponseText(response: string, agent: AiAgentId): string {
-  return response.trim()
-    ? response
-    : `${getAiAgentDefinition(agent).label} finished without returning a reply.`
+  if (response.trim()) return response
+
+  if (agent === 'opencode') {
+    return [
+      'OpenCode returned no assistant text.',
+      'Check the selected provider/model context limit or retry the request.',
+      'For large active notes, Tolaria sends a compact note snapshot and OpenCode can read the full file with get_note(path).',
+    ].join(' ')
+  }
+
+  return `${getAiAgentDefinition(agent).label} finished without returning a reply.`
 }
 
 export function createStreamCallbacks(context: StreamMutationContext) {
@@ -39,6 +51,8 @@ export function createStreamCallbacks(context: StreamMutationContext) {
     toolInputMapRef,
     fileCallbacksRef,
   } = context
+  let failureTracked = false
+  let streamFailed = false
 
   return {
     onThinking: (chunk: string) => {
@@ -92,7 +106,10 @@ export function createStreamCallbacks(context: StreamMutationContext) {
       if (abortRef.current.aborted) return
 
       setStatus('error')
+      streamFailed = true
       const partial = responseAccRef.current
+      failureTracked = true
+      trackAiAgentResponseFailed(agent, partial, toolInputMapRef.current.size)
       updateMessage(setMessages, messageId, (message) => ({
         ...message,
         isStreaming: false,
@@ -106,9 +123,11 @@ export function createStreamCallbacks(context: StreamMutationContext) {
 
     onDone: () => {
       if (abortRef.current.aborted) return
+      if (streamFailed) return
 
       setStatus('done')
       const finalResponse = finalResponseText(responseAccRef.current, agent)
+      trackAiAgentResponseCompleted(agent, responseAccRef.current, toolInputMapRef.current.size, failureTracked)
       updateMessage(setMessages, messageId, (message) => ({
         ...message,
         isStreaming: false,

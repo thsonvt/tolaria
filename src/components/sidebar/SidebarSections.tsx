@@ -1,7 +1,9 @@
 import {
-  type Dispatch, type Ref, type RefObject, type SetStateAction,
+  type CSSProperties, type Dispatch, type ReactNode, type Ref, type RefObject, type SetStateAction,
 } from 'react'
-import type { VaultEntry, SidebarSelection, ViewFile } from '../../types'
+import type {
+  VaultEntry, SidebarSelection, ViewDefinition, ViewFile,
+} from '../../types'
 import {
   DndContext, closestCenter, useSensors, type DragEndEvent,
 } from '@dnd-kit/core'
@@ -11,9 +13,12 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { SlidersHorizontal } from 'lucide-react'
 import {
-  CaretLeft, Plus,
+  ArrowLeft, ArrowRight, Palette, PencilSimple, Plus, SidebarSimple, Trash,
 } from '@phosphor-icons/react'
+import { APP_COMMAND_IDS, getAppCommandShortcutDisplay } from '../../hooks/appCommandCatalog'
 import { Button } from '@/components/ui/button'
+import { ActionTooltip } from '@/components/ui/action-tooltip'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import {
   type SectionGroup, isSelectionActive, SectionContent, VisibilityPopover,
 } from '../SidebarParts'
@@ -22,12 +27,19 @@ import { useDragRegion } from '../../hooks/useDragRegion'
 import { SidebarGroupHeader } from './SidebarGroupHeader'
 import { SidebarViewItem } from './SidebarViewItem'
 import { computeReorder } from './sidebarHooks'
+import { SIDEBAR_SECTION_CONTENT_PADDING_BOTTOM } from './sidebarStyles'
 import { countByFilter } from '../../utils/noteListHelpers'
 import { translate, type AppLocale } from '../../lib/i18n'
-import { canMoveView, type ViewMoveDirection } from '../../utils/viewOrdering'
 
 export { SidebarTopNav } from './SidebarTopNav'
 export { FavoritesSection } from './FavoritesSection'
+
+const SIDEBAR_TITLE_BAR_ACTION_CLASSNAME =
+  '!h-auto !w-auto !min-w-0 !rounded-none !p-0 text-muted-foreground hover:!bg-transparent hover:text-foreground [&_svg]:!size-4'
+
+const SIDEBAR_COLLAPSE_SHORTCUT = getAppCommandShortcutDisplay(APP_COMMAND_IDS.viewEditorList)
+const HISTORY_BACK_SHORTCUT = getAppCommandShortcutDisplay(APP_COMMAND_IDS.viewGoBack)
+const HISTORY_FORWARD_SHORTCUT = getAppCommandShortcutDisplay(APP_COMMAND_IDS.viewGoForward)
 
 export interface SidebarSectionProps {
   entries: VaultEntry[]
@@ -38,6 +50,8 @@ export interface SidebarSectionProps {
   renameInitialValue: string
   onRenameSubmit: (value: string) => void
   onRenameCancel: () => void
+  onStartRename: (type: string) => void
+  onSelectTypeNote: (type: string) => void
   locale?: AppLocale
 }
 
@@ -50,8 +64,8 @@ export function ViewsSection({
   onCreateView,
   onEditView,
   onDeleteView,
+  onUpdateViewDefinition,
   onReorderViews,
-  onMoveView,
   sensors,
   entries,
   locale = 'en',
@@ -64,8 +78,8 @@ export function ViewsSection({
   onCreateView?: () => void
   onEditView?: (filename: string) => void
   onDeleteView?: (filename: string) => void
+  onUpdateViewDefinition?: (filename: string, patch: Partial<ViewDefinition>) => void
   onReorderViews?: (orderedFilenames: string[]) => void
-  onMoveView?: (filename: string, direction: ViewMoveDirection) => void
   sensors: ReturnType<typeof useSensors>
   entries: VaultEntry[]
   locale?: AppLocale
@@ -85,9 +99,7 @@ export function ViewsSection({
       onSelect={() => onSelect({ kind: 'view', filename: view.filename })}
       onEditView={onEditView}
       onDeleteView={onDeleteView}
-      onMoveView={onMoveView}
-      canMoveUp={canMoveView(views, view.filename, 'up')}
-      canMoveDown={canMoveView(views, view.filename, 'down')}
+      onUpdateViewDefinition={onUpdateViewDefinition}
       entries={entries}
       locale={locale}
     />
@@ -111,7 +123,7 @@ export function ViewsSection({
         )}
       </SidebarGroupHeader>
       {!collapsed && (
-        <div style={{ paddingBottom: 4 }}>
+        <div style={{ paddingBottom: SIDEBAR_SECTION_CONTENT_PADDING_BOTTOM }}>
           {onReorderViews ? (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleViewDragEnd}>
               <SortableContext items={viewIds} strategy={verticalListSortingStrategy}>
@@ -119,12 +131,11 @@ export function ViewsSection({
                   <SortableViewItem
                     key={view.filename}
                     view={view}
-                    views={views}
                     selection={selection}
                     onSelect={onSelect}
                     onEditView={onEditView}
                     onDeleteView={onDeleteView}
-                    onMoveView={onMoveView}
+                    onUpdateViewDefinition={onUpdateViewDefinition}
                     entries={entries}
                     locale={locale}
                   />
@@ -140,22 +151,20 @@ export function ViewsSection({
 
 function SortableViewItem({
   view,
-  views,
   selection,
   onSelect,
   onEditView,
   onDeleteView,
-  onMoveView,
+  onUpdateViewDefinition,
   entries,
   locale,
 }: {
   view: ViewFile
-  views: ViewFile[]
   selection: SidebarSelection
   onSelect: (selection: SidebarSelection) => void
   onEditView?: (filename: string) => void
   onDeleteView?: (filename: string) => void
-  onMoveView?: (filename: string, direction: ViewMoveDirection) => void
+  onUpdateViewDefinition?: (filename: string, patch: Partial<ViewDefinition>) => void
   entries: VaultEntry[]
   locale?: AppLocale
 }) {
@@ -164,6 +173,7 @@ function SortableViewItem({
   return (
     <div
       ref={setNodeRef}
+      {...attributes}
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
@@ -176,10 +186,8 @@ function SortableViewItem({
         onSelect={() => onSelect({ kind: 'view', filename: view.filename })}
         onEditView={onEditView}
         onDeleteView={onDeleteView}
-        onMoveView={onMoveView}
-        canMoveUp={canMoveView(views, view.filename, 'up')}
-        canMoveDown={canMoveView(views, view.filename, 'down')}
-        dragHandleProps={{ ...attributes, ...listeners }}
+        onUpdateViewDefinition={onUpdateViewDefinition}
+        dragHandleProps={listeners}
         entries={entries}
         locale={locale}
       />
@@ -209,6 +217,8 @@ function SortableSection({
       renameInitialValue={isRenaming ? sectionProps.renameInitialValue : undefined}
       onRenameSubmit={sectionProps.onRenameSubmit}
       onRenameCancel={sectionProps.onRenameCancel}
+      onStartRename={sectionProps.onStartRename}
+      onSelectTypeNote={sectionProps.onSelectTypeNote}
       locale={sectionProps.locale}
     />
   )
@@ -304,39 +314,116 @@ export function TypesSection({
         )}
       </div>
       {!collapsed && (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={sectionIds} strategy={verticalListSortingStrategy}>
-            {visibleSections.map((group) => (
-              <SortableSection key={group.type} group={group} sectionProps={sectionProps} />
-            ))}
-          </SortableContext>
-        </DndContext>
+        <div style={{ paddingBottom: SIDEBAR_SECTION_CONTENT_PADDING_BOTTOM }}>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={sectionIds} strategy={verticalListSortingStrategy}>
+              {visibleSections.map((group) => (
+                <SortableSection key={group.type} group={group} sectionProps={sectionProps} />
+              ))}
+            </SortableContext>
+          </DndContext>
+        </div>
       )}
     </div>
   )
 }
 
-export function SidebarTitleBar({ locale = 'en', onCollapse }: { locale?: AppLocale; onCollapse?: () => void }) {
-  const { onMouseDown } = useDragRegion()
+function titleWithShortcut(label: string, shortcut?: string): string {
+  return shortcut ? `${label} (${shortcut})` : label
+}
+
+function SidebarTitleBarAction({
+  children,
+  disabled = false,
+  label,
+  onClick,
+  shortcut,
+}: {
+  children: ReactNode
+  disabled?: boolean
+  label: string
+  onClick?: () => void
+  shortcut?: string
+}) {
+  const title = titleWithShortcut(label, shortcut)
 
   return (
-    <div
-      className="shrink-0 flex items-center justify-end border-b border-border"
-      style={{ height: 52, padding: '0 8px', paddingLeft: 80, cursor: 'default' }}
-      onMouseDown={onMouseDown}
-    >
-      {onCollapse && (
-        <button
-          className="flex shrink-0 cursor-pointer items-center justify-center rounded border-none bg-transparent p-0 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          style={{ width: 24, height: 24 }}
-          onClick={onCollapse}
-          aria-label={translate(locale, 'sidebar.action.collapse')}
-          title={translate(locale, 'sidebar.action.collapse')}
+    <ActionTooltip copy={{ label, shortcut }} side="bottom" sideOffset={8}>
+      <span className="inline-flex" title={title} data-no-drag>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className={SIDEBAR_TITLE_BAR_ACTION_CLASSNAME}
+          onClick={(event) => { event.stopPropagation(); onClick?.() }}
+          disabled={disabled}
+          aria-label={label}
+          title={title}
+          data-no-drag
         >
-          <CaretLeft size={14} weight="bold" />
-        </button>
-      )}
-    </div>
+          {children}
+        </Button>
+      </span>
+    </ActionTooltip>
+  )
+}
+
+export function SidebarTitleBar({
+  locale = 'en',
+  onCollapse,
+  onGoBack,
+  onGoForward,
+  canGoBack = false,
+  canGoForward = false,
+}: {
+  locale?: AppLocale
+  onCollapse?: () => void
+  onGoBack?: () => void
+  onGoForward?: () => void
+  canGoBack?: boolean
+  canGoForward?: boolean
+}) {
+  const { onMouseDown } = useDragRegion()
+  const collapseLabel = translate(locale, 'sidebar.action.collapse')
+  const backLabel = translate(locale, 'command.navigation.goBack')
+  const forwardLabel = translate(locale, 'command.navigation.goForward')
+
+  return (
+    <TooltipProvider>
+      <div
+        className="shrink-0 flex items-center border-b border-border"
+        style={{ height: 52, padding: '0 8px', paddingLeft: 90, cursor: 'default', justifyContent: 'flex-start' }}
+        onMouseDown={onMouseDown}
+      >
+        <div className="flex items-center gap-5" style={{ WebkitAppRegion: 'no-drag' } as CSSProperties}>
+          {onCollapse && (
+            <SidebarTitleBarAction label={collapseLabel} shortcut={SIDEBAR_COLLAPSE_SHORTCUT} onClick={onCollapse}>
+              <SidebarSimple size={16} weight="regular" />
+            </SidebarTitleBarAction>
+          )}
+          {onGoBack && (
+            <SidebarTitleBarAction
+              label={backLabel}
+              shortcut={HISTORY_BACK_SHORTCUT}
+              onClick={onGoBack}
+              disabled={!canGoBack}
+            >
+              <ArrowLeft size={16} weight="regular" />
+            </SidebarTitleBarAction>
+          )}
+          {onGoForward && (
+            <SidebarTitleBarAction
+              label={forwardLabel}
+              shortcut={HISTORY_FORWARD_SHORTCUT}
+              onClick={onGoForward}
+              disabled={!canGoForward}
+            >
+              <ArrowRight size={16} weight="regular" />
+            </SidebarTitleBarAction>
+          )}
+        </div>
+      </div>
+    </TooltipProvider>
   )
 }
 
@@ -346,6 +433,7 @@ export function ContextMenuOverlay({
   innerRef,
   onOpenCustomize,
   onStartRename,
+  onDelete,
   locale = 'en',
 }: {
   pos: { x: number; y: number } | null
@@ -353,11 +441,12 @@ export function ContextMenuOverlay({
   innerRef: Ref<HTMLDivElement>
   onOpenCustomize: (type: string) => void
   onStartRename: (type: string) => void
+  onDelete: (type: string) => void
   locale?: AppLocale
 }) {
   if (!pos || !type) return null
 
-  const buttonClass = 'flex w-full items-center gap-2 rounded-sm border-none bg-transparent px-2 py-1.5 text-left text-sm cursor-default transition-colors hover:bg-accent hover:text-accent-foreground'
+  const buttonClass = 'h-auto w-full justify-start gap-2 rounded-sm px-2 py-1.5 text-left text-sm font-normal'
 
   return (
     <div
@@ -365,12 +454,25 @@ export function ContextMenuOverlay({
       className="fixed z-50 rounded-md border bg-popover p-1 shadow-md"
       style={{ left: pos.x, top: pos.y, minWidth: 180 }}
     >
-      <button className={buttonClass} onClick={() => onStartRename(type)}>
-        {translate(locale, 'sidebar.action.renameSection')}
-      </button>
-      <button className={buttonClass} onClick={() => onOpenCustomize(type)}>
+      <Button type="button" variant="ghost" size="sm" className={buttonClass} onClick={() => onStartRename(type)}>
+        <PencilSimple size={14} />
+        {translate(locale, 'sidebar.action.renameType')}
+      </Button>
+      <Button type="button" variant="ghost" size="sm" className={buttonClass} onClick={() => onOpenCustomize(type)}>
+        <Palette size={14} />
         {translate(locale, 'sidebar.action.customizeIconColor')}
-      </button>
+      </Button>
+      <div className="my-1 h-px bg-border" role="separator" />
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={`${buttonClass} text-destructive hover:text-destructive`}
+        onClick={() => onDelete(type)}
+      >
+        <Trash size={14} />
+        {translate(locale, 'sidebar.action.deleteType')}
+      </Button>
     </div>
   )
 }
@@ -382,6 +484,7 @@ export function CustomizeOverlay({
   onCustomize,
   onChangeTemplate,
   onClose,
+  locale = 'en',
 }: {
   target: string | null
   typeEntryMap: Record<string, VaultEntry>
@@ -389,6 +492,7 @@ export function CustomizeOverlay({
   onCustomize: (prop: 'icon' | 'color', value: string) => void
   onChangeTemplate: (template: string) => void
   onClose: () => void
+  locale?: AppLocale
 }) {
   if (!target) return null
 
@@ -402,6 +506,7 @@ export function CustomizeOverlay({
         onChangeColor={(color) => onCustomize('color', color)}
         onChangeTemplate={onChangeTemplate}
         onClose={onClose}
+        locale={locale}
       />
     </div>
   )

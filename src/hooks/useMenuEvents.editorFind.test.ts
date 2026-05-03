@@ -31,6 +31,7 @@ function makeHandlers(): MenuEventHandlers {
     onDeleteNote: vi.fn(),
     onFindInNote: vi.fn(),
     onOpenSettings: vi.fn(),
+    onPastePlainText: vi.fn(),
     onQuickOpen: vi.fn(),
     onReplaceInNote: vi.fn(),
     onSave: vi.fn(),
@@ -69,5 +70,22 @@ describe('useMenuEvents editor find state', () => {
         state: expect.objectContaining({ editorFindEnabled: true }),
       }))
     })
+  })
+
+  it('does not resync native menu state for equivalent rerenders', async () => {
+    const { rerender } = renderHook(
+      ({ handlers }: { handlers: MenuEventHandlers }) => useMenuEvents(handlers),
+      { initialProps: { handlers: makeHandlers() } },
+    )
+    await vi.dynamicImportSettled()
+
+    expect(invokeMock).toHaveBeenCalledTimes(1)
+    invokeMock.mockClear()
+
+    rerender({ handlers: makeHandlers() })
+    rerender({ handlers: makeHandlers() })
+    await vi.dynamicImportSettled()
+
+    expect(invokeMock).not.toHaveBeenCalled()
   })
 })

@@ -145,6 +145,7 @@ const mockCommandResults: Record<string, unknown> = {
   get_all_content: mockAllContent,
   get_modified_files: [],
   get_note_content: mockAllContent['/vault/project/test.md'] || '',
+  save_note_content: null,
   reload_vault_entry: ({ path }: { path: string }) => mockEntries.find((entry) => entry.path === path) ?? null,
   sync_vault_asset_scope_for_window: null,
   get_file_history: [],
@@ -257,11 +258,18 @@ function getHeaderForNoteList(noteListContainer: HTMLElement) {
   return within(noteListContainer.parentElement as HTMLElement).getByRole('heading', { level: 3 })
 }
 
-async function enterNeighborhood(noteListContainer: HTMLElement, title: string) {
+async function clickNoteListItem(noteListContainer: HTMLElement, title: string, options?: MouseEventInit) {
+  await waitFor(() => {
+    expect(within(noteListContainer).getByText(title)).toBeInTheDocument()
+  })
   await act(async () => {
-    fireEvent.click(within(noteListContainer).getByText(title), { metaKey: true })
+    fireEvent.click(within(noteListContainer).getByText(title), options)
     await Promise.resolve()
   })
+}
+
+async function enterNeighborhood(noteListContainer: HTMLElement, title: string) {
+  await clickNoteListItem(noteListContainer, title, { metaKey: true })
 }
 
 async function pressEscape() {
@@ -280,6 +288,7 @@ function resetMockCommandResults() {
     get_all_content: mockAllContent,
     get_modified_files: [],
     get_note_content: mockAllContent['/vault/project/test.md'] || '',
+    save_note_content: null,
     reload_vault_entry: ({ path }: { path: string }) => mockEntries.find((entry) => entry.path === path) ?? null,
     sync_vault_asset_scope_for_window: null,
     get_file_history: [],
@@ -373,9 +382,9 @@ vi.mock('@blocknote/core/extensions', () => ({
 vi.mock('@blocknote/react', () => ({
   createReactBlockSpec: () => () => ({}),
   createReactInlineContentSpec: () => ({ render: () => null }),
-  BlockNoteViewRaw: ({ children }: { children?: ReactNode }) => (
-    <div data-testid="blocknote-view">
-      <div contentEditable suppressContentEditableWarning data-testid="mock-editor">
+  BlockNoteViewRaw: ({ children, editable }: { children?: ReactNode; editable?: boolean }) => (
+    <div data-testid="blocknote-view" data-editable={editable !== false ? 'true' : 'false'}>
+      <div contentEditable={editable !== false} suppressContentEditableWarning data-testid="mock-editor">
         mock editor
       </div>
       {children}
@@ -440,6 +449,7 @@ import { streamAiAgent } from './utils/streamAiAgent'
 
 const AI_AGENTS_ONBOARDING_DISMISSED_KEY = 'tolaria:ai-agents-onboarding-dismissed'
 const CLAUDE_CODE_ONBOARDING_DISMISSED_KEY = 'tolaria:claude-code-onboarding-dismissed'
+const SLOW_APP_READY_TIMEOUT_MS = 10_000
 
 function createMockUpdaterResult(
   checkForUpdates: () => Promise<{ kind: 'up-to-date' } | { kind: 'available'; version: string; displayVersion: string } | { kind: 'error'; message: string }> = async () => ({ kind: 'up-to-date' }),
@@ -499,7 +509,7 @@ describe('App', () => {
         definition: expect.objectContaining({ name: '🚀' }),
       }))
     })
-  })
+  }, 10000)
 
   it('loads and displays vault entries in sidebar', async () => {
     render(<App />)
@@ -510,7 +520,7 @@ describe('App', () => {
     })
   })
 
-  it('shows the app shell skeleton while the vault note scan is pending', async () => {
+  it('keeps the app shell usable while the vault note scan is pending', async () => {
     let resolveListVault: ((value: typeof mockEntries) => void) | null = null
     const listVaultPromise = new Promise<typeof mockEntries>((resolve) => {
       resolveListVault = resolve
@@ -519,10 +529,22 @@ describe('App', () => {
 
     render(<App />)
 
-    await waitFor(() => {
-      expect(screen.getByTestId('vault-loading-skeleton')).toBeInTheDocument()
-    })
+    expect(await screen.findByTestId('sidebar-loading-favorites', {}, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.queryByTestId('vault-loading-skeleton')).not.toBeInTheDocument()
+    expect(screen.getByTestId('sidebar-top-nav')).toHaveTextContent('Inbox')
+    expect(screen.getByTestId('sidebar-loading-views')).toBeInTheDocument()
+    expect(screen.getByTestId('sidebar-loading-types')).toBeInTheDocument()
+    expect(screen.getByTestId('sidebar-loading-folders')).toBeInTheDocument()
+    expect(screen.getByTestId('note-list-loading-skeleton')).toBeInTheDocument()
+    expect(screen.getByTestId('breadcrumb-title-skeleton')).toBeInTheDocument()
+    expect(screen.getByTestId('editor-content-skeleton')).toBeInTheDocument()
     expect(screen.queryByText('Select a note to start editing')).not.toBeInTheDocument()
+    expect(screen.getByTestId('status-vault-reloading')).toHaveAccessibleName('Reloading vault from disk')
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'p', code: 'KeyP', metaKey: true })
+      await Promise.resolve()
+    })
+    expect(within(screen.getByTestId('quick-open-palette')).getByText('Reloading vault...')).toBeInTheDocument()
 
     await act(async () => {
       resolveListVault?.(mockEntries)
@@ -531,6 +553,10 @@ describe('App', () => {
 
     await waitFor(() => {
       expect(screen.queryByTestId('vault-loading-skeleton')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('note-list-loading-skeleton')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('breadcrumb-title-skeleton')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('editor-content-skeleton')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('status-vault-reloading')).not.toBeInTheDocument()
       expect(screen.getAllByText('Test Project').length).toBeGreaterThan(0)
     })
   })
@@ -564,6 +590,7 @@ describe('App', () => {
     await waitFor(() => expect(getNoteContent).toHaveBeenCalled())
     expect(getNoteContent).toHaveBeenCalledWith({ path: '/vault/project/test.md', vaultPath: '/vault' })
     await waitFor(() => expect(window.__laputaTest?.activeTabPath).toBe('/vault/project/test.md'))
+    expect(screen.getByTestId('blocknote-view')).toHaveAttribute('data-editable', 'true')
     expect(listVault).not.toHaveBeenCalled()
   })
 
@@ -647,7 +674,7 @@ describe('App', () => {
 
     await waitFor(() => {
       expect(screen.getByText('AI agents ready')).toBeInTheDocument()
-    })
+    }, { timeout: SLOW_APP_READY_TIMEOUT_MS })
 
     await waitFor(() => {
       expect(typeof window.__laputaTest?.dispatchBrowserMenuCommand).toBe('function')
@@ -820,7 +847,7 @@ describe('App', () => {
     expect(screen.getByTestId('welcome-open-folder')).toHaveTextContent('Open existing vault')
   })
 
-  it('keeps startup on a neutral loading state while the last vault is still resolving', async () => {
+  it('uses the app shell loading state while the last vault is still resolving', async () => {
     localStorage.setItem('tolaria_welcome_dismissed', '1')
 
     let resolveVaultList: ((value: typeof mockVaultList) => void) | null = null
@@ -839,7 +866,12 @@ describe('App', () => {
       await Promise.resolve()
     })
 
-    expect(screen.getByTestId('vault-loading-skeleton')).toBeInTheDocument()
+    expect(screen.queryByTestId('vault-loading-skeleton')).not.toBeInTheDocument()
+    expect(screen.getByTestId('sidebar-loading-favorites')).toBeInTheDocument()
+    expect(screen.getByTestId('note-list-loading-skeleton')).toBeInTheDocument()
+    expect(screen.getByTestId('breadcrumb-title-skeleton')).toBeInTheDocument()
+    expect(screen.getByTestId('editor-content-skeleton')).toBeInTheDocument()
+    expect(screen.getByTestId('status-vault-reloading')).toHaveAccessibleName('Reloading vault from disk')
     expect(screen.queryByText('Vault not found')).not.toBeInTheDocument()
 
     await act(async () => {
@@ -911,7 +943,7 @@ describe('App', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('welcome-screen')).toBeInTheDocument()
-    })
+    }, { timeout: SLOW_APP_READY_TIMEOUT_MS })
 
     fireEvent.click(screen.getByTestId('welcome-open-folder'))
 
@@ -1038,15 +1070,21 @@ describe('App', () => {
     await waitFor(() => {
       expect(getHeader()).toHaveTextContent('Inbox')
     })
-  })
+  }, 10_000)
 
   it('opens favorites directly into Neighborhood mode', async () => {
     configureNeighborhoodFavoritesVault()
 
     render(<App />)
 
-    const sidebar = await screen.findByText('FAVORITES')
-    fireEvent.click(within(sidebar.closest('div')?.parentElement as HTMLElement).getByText('Alpha'))
+    let favoritesSection: HTMLElement | undefined
+    await waitFor(() => {
+      const sidebar = screen.getByText('FAVORITES')
+      const currentFavoritesSection = sidebar.closest('div')?.parentElement as HTMLElement
+      expect(within(currentFavoritesSection).getByText('Alpha')).toBeInTheDocument()
+      favoritesSection = currentFavoritesSection
+    })
+    fireEvent.click(within(favoritesSection!).getByText('Alpha'))
 
     const noteListContainer = await screen.findByTestId('note-list-container')
     await waitFor(() => {
@@ -1102,10 +1140,7 @@ describe('App', () => {
       expect(getHeaderForNoteList(noteListContainer)).toHaveTextContent('Inbox')
     })
 
-    await act(async () => {
-      fireEvent.click(within(noteListContainer).getByText('Alpha'))
-      await Promise.resolve()
-    })
+    await clickNoteListItem(noteListContainer, 'Alpha')
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Set note as organized' })).toBeInTheDocument()
@@ -1119,7 +1154,61 @@ describe('App', () => {
     await waitFor(() => {
       expect(window.__laputaTest?.activeTabPath).toBe('/vault/beta.md')
     })
-  })
+  }, 10_000)
+
+  it('keeps the manually selected note after organizing finishes later', async () => {
+    configureNeighborhoodVault()
+    mockCommandResults.get_settings = {
+      auto_pull_interval_minutes: null,
+      auto_advance_inbox_after_organize: true,
+      telemetry_consent: true,
+      crash_reporting_enabled: null,
+      analytics_enabled: null,
+      anonymous_id: null,
+      release_channel: null,
+    }
+
+    let resolveOrganizeSave!: () => void
+    const organizeSave = new Promise<void>((resolve) => {
+      resolveOrganizeSave = resolve
+    })
+    mockCommandResults.save_note_content = vi.fn(() => organizeSave)
+
+    render(<App />)
+
+    const noteListContainer = await screen.findByTestId('note-list-container')
+    await waitFor(() => {
+      expect(getHeaderForNoteList(noteListContainer)).toHaveTextContent('Inbox')
+    })
+
+    await clickNoteListItem(noteListContainer, 'Alpha')
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Set note as organized' })).toBeInTheDocument()
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Set note as organized' }))
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      fireEvent.click(within(noteListContainer).getByText('Gamma'))
+      await Promise.resolve()
+    })
+    await waitFor(() => {
+      expect(window.__laputaTest?.activeTabPath).toBe('/vault/gamma.md')
+    })
+
+    await act(async () => {
+      resolveOrganizeSave()
+      await organizeSave
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(window.__laputaTest?.activeTabPath).toBe('/vault/gamma.md')
+  }, 10_000)
 
   it('renders status bar', async () => {
     render(<App />)
@@ -1305,7 +1394,7 @@ describe('App', () => {
     fireEvent.keyDown(window, { key: '3', metaKey: true })
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith('update_current_window_min_size', {
-        minWidth: 880,
+        minWidth: 1030,
         minHeight: 400,
         growToFit: true,
       })

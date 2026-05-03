@@ -64,7 +64,10 @@ pub(crate) fn find_claude_binary() -> Result<PathBuf, String> {
         return Ok(binary);
     }
 
-    if let Some(binary) = find_existing_binary(claude_binary_candidates()) {
+    if let Some(binary) = crate::cli_agent_runtime::find_executable_binary_candidate(
+        claude_binary_candidates(),
+        "Claude CLI",
+    )? {
         return Ok(binary);
     }
 
@@ -156,11 +159,13 @@ fn claude_binary_candidates_for_home(home: &Path) -> Vec<PathBuf> {
         home.join(".npm/bin/claude"),
         home.join(".npm/bin/claude.cmd"),
         home.join(".npm/bin/claude.exe"),
+        home.join(".linuxbrew/bin/claude"),
         home.join("AppData/Roaming/npm/claude.cmd"),
         home.join("AppData/Roaming/npm/claude.exe"),
         home.join("AppData/Local/pnpm/claude.cmd"),
         home.join("AppData/Local/pnpm/claude.exe"),
         home.join("scoop/shims/claude.exe"),
+        PathBuf::from("/home/linuxbrew/.linuxbrew/bin/claude"),
         PathBuf::from("/opt/homebrew/bin/claude"),
         PathBuf::from("/usr/local/bin/claude"),
     ];
@@ -181,10 +186,6 @@ fn nvm_node_binary_candidates_for_home(home: &Path, binary_name: &str) -> Vec<Pa
         .collect::<Vec<_>>();
     candidates.sort();
     candidates
-}
-
-fn find_existing_binary(candidates: Vec<PathBuf>) -> Option<PathBuf> {
-    candidates.into_iter().find(|candidate| candidate.exists())
 }
 
 // ---------------------------------------------------------------------------
@@ -280,6 +281,11 @@ fn build_agent_args(req: &AgentStreamRequest) -> Result<Vec<String>, String> {
         "--no-session-persistence".into(),
     ];
 
+    if let Some(allowed_tools) = preapproved_agent_tools(req.permission_mode) {
+        args.push("--allowedTools".into());
+        args.push(allowed_tools.into());
+    }
+
     if let Some(ref sp) = req.system_prompt {
         if !sp.is_empty() {
             args.push("--append-system-prompt".into());
@@ -294,6 +300,13 @@ fn agent_tools(permission_mode: AiAgentPermissionMode) -> &'static str {
     match permission_mode {
         AiAgentPermissionMode::Safe => "Read,Edit,MultiEdit,Write,Glob,Grep,LS",
         AiAgentPermissionMode::PowerUser => "Read,Edit,MultiEdit,Write,Glob,Grep,LS,Bash",
+    }
+}
+
+fn preapproved_agent_tools(permission_mode: AiAgentPermissionMode) -> Option<&'static str> {
+    match permission_mode {
+        AiAgentPermissionMode::Safe => None,
+        AiAgentPermissionMode::PowerUser => Some("Bash"),
     }
 }
 
@@ -374,6 +387,7 @@ fn build_claude_command(
     cwd: Option<&str>,
 ) -> std::process::Command {
     let mut cmd = crate::hidden_command(bin);
+    crate::cli_agent_runtime::configure_agent_command_environment(&mut cmd, bin);
     cmd.args(args)
         .env_remove("CLAUDECODE") // prevent "nested session" guard
         .stdin(Stdio::null())
@@ -692,6 +706,11 @@ mod tests {
         };
     }
 
+    fn arg_value_after<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
+        let index = args.iter().position(|arg| arg == name)?;
+        args.get(index + 1).map(String::as_str)
+    }
+
     fn assert_binary_candidates_include(home: &Path, expected: &[PathBuf]) {
         let candidates = claude_binary_candidates_for_home(home);
         for candidate in expected {
@@ -740,6 +759,7 @@ mod tests {
         );
         assert_args_contain!(args, ["Read,Edit,MultiEdit,Write,Glob,Grep,LS"]);
         assert_no_arg_contains!(args, "Bash");
+        assert_args_lack!(args, ["--allowedTools"]);
         assert_args_lack!(args, ["--dangerously-skip-permissions"]);
     }
 
@@ -755,6 +775,18 @@ mod tests {
         assert_args_contain!(args, ["--strict-mcp-config"]);
         assert_args_contain!(args, ["Read,Edit,MultiEdit,Write,Glob,Grep,LS,Bash"]);
         assert_args_lack!(args, ["--dangerously-skip-permissions"]);
+    }
+
+    #[test]
+    fn agent_args_preapprove_bash_for_power_user_runs() {
+        let args = build_agent_args(&agent_request!(
+            "Run a local script",
+            None,
+            AiAgentPermissionMode::PowerUser,
+        ))
+        .unwrap();
+
+        assert_eq!(arg_value_after(&args, "--allowedTools"), Some("Bash"));
     }
 
     #[test]
@@ -1398,6 +1430,17 @@ mod tests {
     }
 
     #[test]
+    fn claude_binary_candidates_include_linuxbrew_installs() {
+        let home = PathBuf::from("/home/alex");
+        let expected = [
+            home.join(".linuxbrew/bin/claude"),
+            PathBuf::from("/home/linuxbrew/.linuxbrew/bin/claude"),
+        ];
+
+        assert_binary_candidates_include(&home, &expected);
+    }
+
+    #[test]
     fn claude_binary_candidates_include_windows_exe_installs() {
         let home = PathBuf::from(r"C:\Users\alex");
         let expected = [
@@ -1422,9 +1465,19 @@ mod tests {
         let claude = dir.path().join(".local/bin/claude.exe");
         std::fs::create_dir_all(claude.parent().unwrap()).unwrap();
         std::fs::write(&claude, "").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
 
         assert_eq!(
-            find_existing_binary(claude_binary_candidates_for_home(dir.path())),
+            crate::cli_agent_runtime::find_executable_binary_candidate(
+                claude_binary_candidates_for_home(dir.path()),
+                "Claude CLI",
+            )
+            .unwrap(),
             Some(claude)
         );
     }
@@ -1475,7 +1528,7 @@ mod tests {
         let mut events = vec![];
         let result = run_claude_subprocess(&fake_bin, &[], None, &mut |e| events.push(e));
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Failed to spawn"));
+        assert!(result.unwrap_err().contains("Failed to start claude"));
     }
 
     #[cfg(unix)]

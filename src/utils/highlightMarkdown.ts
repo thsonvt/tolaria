@@ -53,7 +53,7 @@ type TableContentLike = {
 
 type BlockContent = Array<InlineItem | Record<string, unknown>> | TableContentLike | unknown
 
-type EditorBlock = {
+export type EditorBlock = {
   content?: BlockContent
   children?: EditorBlock[]
   [key: string]: unknown

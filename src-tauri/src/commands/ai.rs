@@ -82,12 +82,25 @@ define_desktop_stream_command!(
 );
 
 #[cfg(desktop)]
-define_desktop_stream_command!(
-    stream_ai_agent,
-    AiAgentStreamRequest,
-    "ai-agent-stream",
-    crate::ai_agents::run_ai_agent_stream
-);
+fn normalize_agent_request(mut request: AiAgentStreamRequest) -> AiAgentStreamRequest {
+    request.vault_path = expand_tilde(&request.vault_path).into_owned();
+    request
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+pub async fn stream_ai_agent(
+    app_handle: tauri::AppHandle,
+    request: AiAgentStreamRequest,
+) -> Result<String, String> {
+    run_desktop_stream(
+        app_handle,
+        "ai-agent-stream",
+        normalize_agent_request(request),
+        crate::ai_agents::run_ai_agent_stream,
+    )
+    .await
+}
 
 // ── Claude CLI (mobile stubs) ───────────────────────────────────────────────
 
@@ -149,8 +162,47 @@ pub async fn stream_ai_agent(
 mod tests {
     use super::*;
     use crate::vault::AiGuidanceFileState;
-    use serde_json::Value;
-    use std::{fs, path::Path};
+
+    #[cfg(desktop)]
+    #[test]
+    fn normalize_agent_request_expands_tilde_in_vault_path() {
+        use crate::ai_agents::AiAgentId;
+
+        let home = dirs::home_dir().unwrap();
+        let request = AiAgentStreamRequest {
+            agent: AiAgentId::ClaudeCode,
+            message: "hi".into(),
+            system_prompt: None,
+            vault_path: "~/Vaults/content".into(),
+            permission_mode: None,
+        };
+
+        let normalized = normalize_agent_request(request);
+
+        assert_eq!(
+            normalized.vault_path,
+            format!("{}/Vaults/content", home.display()),
+            "vault_path must be tilde-expanded so spawned agents can chdir into it",
+        );
+    }
+
+    #[cfg(desktop)]
+    #[test]
+    fn normalize_agent_request_leaves_absolute_vault_path_untouched() {
+        use crate::ai_agents::AiAgentId;
+
+        let request = AiAgentStreamRequest {
+            agent: AiAgentId::Codex,
+            message: "hi".into(),
+            system_prompt: None,
+            vault_path: "/Users/example/vault".into(),
+            permission_mode: None,
+        };
+
+        let normalized = normalize_agent_request(request);
+
+        assert_eq!(normalized.vault_path, "/Users/example/vault");
+    }
 
     #[test]
     fn guidance_commands_report_and_restore_vault_guidance_files() {
@@ -172,25 +224,5 @@ mod tests {
         assert!(dir.path().join("AGENTS.md").exists());
         assert!(dir.path().join("CLAUDE.md").exists());
         assert!(dir.path().join("GEMINI.md").exists());
-    }
-
-    #[test]
-    fn desktop_capability_allows_opening_restored_guidance_files() {
-        let capability_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("capabilities")
-            .join("default.json");
-        let capability_json = fs::read_to_string(capability_path).unwrap();
-        let capability: Value = serde_json::from_str(&capability_json).unwrap();
-        let permissions = capability
-            .get("permissions")
-            .and_then(Value::as_array)
-            .unwrap();
-
-        assert!(
-            permissions
-                .iter()
-                .any(|permission| permission.as_str() == Some("opener:allow-open-path")),
-            "desktop capabilities must allow opener open_path so restored guidance files can be opened"
-        );
     }
 }

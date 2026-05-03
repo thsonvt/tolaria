@@ -14,8 +14,10 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
+  type RefObject,
 } from 'react'
 import { Moon, Sun, X } from '@phosphor-icons/react'
+import { Copy } from 'lucide-react'
 import type { Settings } from '../types'
 import {
   APP_LOCALES,
@@ -37,6 +39,12 @@ import {
 import { normalizeReleaseChannel, serializeReleaseChannel, type ReleaseChannel } from '../lib/releaseChannel'
 import { shouldHideGitignoredFiles } from '../lib/gitignoredVisibility'
 import { trackEvent } from '../lib/telemetry'
+import { trackAllNotesVisibilityChanged } from '../lib/productAnalytics'
+import {
+  resolveAllNotesFileVisibility,
+  settingsWithAllNotesFileVisibility,
+  type AllNotesFileVisibility,
+} from '../utils/allNotesFileVisibility'
 import { Button } from './ui/button'
 import { Checkbox, type CheckedState } from './ui/checkbox'
 import { Input } from './ui/input'
@@ -56,6 +64,7 @@ interface SettingsPanelProps {
   locale?: AppLocale
   systemLocale?: AppLocale
   onSave: (settings: Settings) => void
+  onCopyMcpConfig?: () => void
   isGitVault?: boolean
   explicitOrganizationEnabled?: boolean
   onSaveExplicitOrganization?: (enabled: boolean) => void
@@ -75,6 +84,7 @@ interface SettingsDraft {
   initialH1AutoRename: boolean
   hideGitignoredFiles: boolean
   semanticSearchEnabled: boolean
+  allNotesFileVisibility: AllNotesFileVisibility
   crashReporting: boolean
   analytics: boolean
   explicitOrganization: boolean
@@ -96,6 +106,7 @@ interface SettingsBodyProps {
   aiAgentsStatus: AiAgentsStatus
   defaultAiAgent: AiAgentId
   setDefaultAiAgent: (value: AiAgentId) => void
+  onCopyMcpConfig?: () => void
   releaseChannel: ReleaseChannel
   setReleaseChannel: (value: ReleaseChannel) => void
   themeMode: ThemeMode
@@ -110,6 +121,8 @@ interface SettingsBodyProps {
   setHideGitignoredFiles: (value: boolean) => void
   semanticSearchEnabled: boolean
   setSemanticSearchEnabled: (value: boolean) => void
+  allNotesFileVisibility: AllNotesFileVisibility
+  setAllNotesFileVisibility: (value: AllNotesFileVisibility) => void
   explicitOrganization: boolean
   setExplicitOrganization: (value: boolean) => void
   crashReporting: boolean
@@ -150,6 +163,7 @@ function createSettingsDraft(
     initialH1AutoRename: settings.initial_h1_auto_rename_enabled ?? true,
     hideGitignoredFiles: shouldHideGitignoredFiles(settings),
     semanticSearchEnabled: settings.semantic_search_enabled ?? false,
+    allNotesFileVisibility: resolveAllNotesFileVisibility(settings),
     crashReporting: settings.crash_reporting_enabled ?? false,
     analytics: settings.analytics_enabled ?? false,
     explicitOrganization: explicitOrganizationEnabled,
@@ -176,7 +190,7 @@ function resolveAnonymousId(settings: Settings, draft: SettingsDraft): string | 
 }
 
 function buildSettingsFromDraft(settings: Settings, draft: SettingsDraft): Settings {
-  return {
+  const nextSettings = {
     auto_pull_interval_minutes: draft.pullInterval,
     autogit_enabled: draft.autoGitEnabled,
     autogit_idle_threshold_seconds: draft.autoGitIdleThresholdSeconds,
@@ -194,6 +208,7 @@ function buildSettingsFromDraft(settings: Settings, draft: SettingsDraft): Setti
     hide_gitignored_files: draft.hideGitignoredFiles,
     semantic_search_enabled: draft.semanticSearchEnabled,
   }
+  return settingsWithAllNotesFileVisibility(nextSettings, draft.allNotesFileVisibility)
 }
 
 function trackTelemetryConsentChange(previousAnalytics: boolean, nextAnalytics: boolean): void {
@@ -215,6 +230,16 @@ function applyThemeModeSelection(value: ThemeMode): void {
   if (typeof window !== 'undefined') writeStoredThemeMode(window.localStorage, value)
 }
 
+function useSettingsPanelAutofocus(panelRef: RefObject<HTMLDivElement | null>): void {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const focusTarget = panelRef.current?.querySelector<HTMLElement>('[data-settings-autofocus="true"]')
+      focusTarget?.focus()
+    }, 50)
+    return () => clearTimeout(timer)
+  }, [panelRef])
+}
+
 export function SettingsPanel({
   open,
   settings,
@@ -222,6 +247,7 @@ export function SettingsPanel({
   locale = 'en',
   systemLocale = locale,
   onSave,
+  onCopyMcpConfig,
   isGitVault = true,
   explicitOrganizationEnabled = true,
   onSaveExplicitOrganization,
@@ -236,6 +262,7 @@ export function SettingsPanel({
       locale={locale}
       systemLocale={systemLocale}
       onSave={onSave}
+      onCopyMcpConfig={onCopyMcpConfig}
       isGitVault={isGitVault}
       explicitOrganizationEnabled={explicitOrganizationEnabled}
       onSaveExplicitOrganization={onSaveExplicitOrganization}
@@ -257,6 +284,7 @@ function SettingsPanelInner({
   aiAgentsStatus,
   systemLocale,
   onSave,
+  onCopyMcpConfig,
   isGitVault,
   explicitOrganizationEnabled,
   onSaveExplicitOrganization,
@@ -271,13 +299,7 @@ function SettingsPanelInner({
     setDraft(createSettingsDraft(settings, explicitOrganizationEnabled))
   }, [explicitOrganizationEnabled, settings])
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const focusTarget = panelRef.current?.querySelector<HTMLElement>('[data-settings-autofocus="true"]')
-      focusTarget?.focus()
-    }, 50)
-    return () => clearTimeout(timer)
-  }, [])
+  useSettingsPanelAutofocus(panelRef)
 
   const updateDraft = useCallback(
     <Key extends keyof SettingsDraft>(key: Key, value: SettingsDraft[Key]) => {
@@ -290,6 +312,12 @@ function SettingsPanelInner({
     updateDraft('hideGitignoredFiles', value)
     onSave({ ...settings, hide_gitignored_files: value })
   }, [onSave, settings, updateDraft])
+
+  const handleAllNotesFileVisibilityChange = useCallback((value: AllNotesFileVisibility) => {
+    trackAllNotesVisibilityChanged(draft.allNotesFileVisibility, value)
+    updateDraft('allNotesFileVisibility', value)
+    onSave(settingsWithAllNotesFileVisibility(settings, value))
+  }, [draft.allNotesFileVisibility, onSave, settings, updateDraft])
 
   const handleThemeModeChange = useCallback((value: ThemeMode) => {
     updateDraft('themeMode', value)
@@ -304,12 +332,9 @@ function SettingsPanelInner({
     onClose()
   }, [draft, onClose, onSave, onSaveExplicitOrganization, settings])
 
-  const handleBackdropClick = useCallback(
-    (event: ReactMouseEvent<HTMLDivElement>) => {
-      if (event.target === event.currentTarget) onClose()
-    },
-    [onClose],
-  )
+  const handleBackdropClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) onClose()
+  }, [onClose])
 
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent) => {
@@ -359,6 +384,7 @@ function SettingsPanelInner({
           aiAgentsStatus={aiAgentsStatus}
           defaultAiAgent={draft.defaultAiAgent}
           setDefaultAiAgent={(value) => updateDraft('defaultAiAgent', value)}
+          onCopyMcpConfig={onCopyMcpConfig}
           releaseChannel={draft.releaseChannel}
           setReleaseChannel={(value) => updateDraft('releaseChannel', value)}
           themeMode={draft.themeMode}
@@ -371,6 +397,8 @@ function SettingsPanelInner({
           setHideGitignoredFiles={handleGitignoredVisibilityChange}
           semanticSearchEnabled={draft.semanticSearchEnabled}
           setSemanticSearchEnabled={(value) => updateDraft('semanticSearchEnabled', value)}
+          allNotesFileVisibility={draft.allNotesFileVisibility}
+          setAllNotesFileVisibility={handleAllNotesFileVisibilityChange}
           explicitOrganization={draft.explicitOrganization}
           setExplicitOrganization={(value) => updateDraft('explicitOrganization', value)}
           crashReporting={draft.crashReporting}
@@ -404,7 +432,17 @@ function SettingsHeader({ onClose, t }: { onClose: () => void; t: Translate }) {
   )
 }
 
-function SettingsBody({
+function SettingsBody(props: SettingsBodyProps) {
+  return (
+    <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 0, overflow: 'auto' }}>
+      <SettingsSyncAndAppearanceSections {...props} />
+      <SettingsContentSections {...props} />
+      <SettingsAgentWorkflowSections {...props} />
+    </div>
+  )
+}
+
+function SettingsSyncAndAppearanceSections({
   t,
   locale,
   systemLocale,
@@ -417,32 +455,15 @@ function SettingsBody({
   setAutoGitIdleThresholdSeconds,
   autoGitInactiveThresholdSeconds,
   setAutoGitInactiveThresholdSeconds,
-  autoAdvanceInboxAfterOrganize,
-  setAutoAdvanceInboxAfterOrganize,
-  aiAgentsStatus,
-  defaultAiAgent,
-  setDefaultAiAgent,
   releaseChannel,
   setReleaseChannel,
   themeMode,
   setThemeMode,
   uiLanguage,
   setUiLanguage,
-  initialH1AutoRename,
-  setInitialH1AutoRename,
-  hideGitignoredFiles,
-  setHideGitignoredFiles,
-  semanticSearchEnabled,
-  setSemanticSearchEnabled,
-  explicitOrganization,
-  setExplicitOrganization,
-  crashReporting,
-  setCrashReporting,
-  analytics,
-  setAnalytics,
 }: SettingsBodyProps) {
   return (
-    <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 0, overflow: 'auto' }}>
+    <>
       <SettingsSection showDivider={false}>
         <SyncAndUpdatesSection
           t={t}
@@ -452,7 +473,6 @@ function SettingsBody({
           setReleaseChannel={setReleaseChannel}
         />
       </SettingsSection>
-
       <SettingsSection>
         <AutoGitSettingsSection
           t={t}
@@ -483,7 +503,21 @@ function SettingsBody({
           setUiLanguage={setUiLanguage}
         />
       </SettingsSection>
+    </>
+  )
+}
 
+function SettingsContentSections({
+  t,
+  initialH1AutoRename,
+  setInitialH1AutoRename,
+  hideGitignoredFiles,
+  setHideGitignoredFiles,
+  allNotesFileVisibility,
+  setAllNotesFileVisibility,
+}: SettingsBodyProps) {
+  return (
+    <>
       <SettingsSection>
         <TitleSettingsSection
           t={t}
@@ -497,15 +531,40 @@ function SettingsBody({
           t={t}
           hideGitignoredFiles={hideGitignoredFiles}
           setHideGitignoredFiles={setHideGitignoredFiles}
+          allNotesFileVisibility={allNotesFileVisibility}
+          setAllNotesFileVisibility={setAllNotesFileVisibility}
         />
       </SettingsSection>
+    </>
+  )
+}
 
+function SettingsAgentWorkflowSections({
+  t,
+  autoAdvanceInboxAfterOrganize,
+  setAutoAdvanceInboxAfterOrganize,
+  aiAgentsStatus,
+  defaultAiAgent,
+  setDefaultAiAgent,
+  onCopyMcpConfig,
+  semanticSearchEnabled,
+  setSemanticSearchEnabled,
+  explicitOrganization,
+  setExplicitOrganization,
+  crashReporting,
+  setCrashReporting,
+  analytics,
+  setAnalytics,
+}: SettingsBodyProps) {
+  return (
+    <>
       <SettingsSection>
         <AiAgentSettingsSection
           t={t}
           aiAgentsStatus={aiAgentsStatus}
           defaultAiAgent={defaultAiAgent}
           setDefaultAiAgent={setDefaultAiAgent}
+          onCopyMcpConfig={onCopyMcpConfig}
         />
       </SettingsSection>
 
@@ -535,7 +594,7 @@ function SettingsBody({
           setAnalytics={setAnalytics}
         />
       </SettingsSection>
-    </div>
+    </>
   )
 }
 
@@ -789,7 +848,16 @@ function VaultContentSettingsSection({
   t,
   hideGitignoredFiles,
   setHideGitignoredFiles,
-}: Pick<SettingsBodyProps, 't' | 'hideGitignoredFiles' | 'setHideGitignoredFiles'>) {
+  allNotesFileVisibility,
+  setAllNotesFileVisibility,
+}: Pick<
+  SettingsBodyProps,
+  't' | 'hideGitignoredFiles' | 'setHideGitignoredFiles' | 'allNotesFileVisibility' | 'setAllNotesFileVisibility'
+>) {
+  const updateAllNotesFileVisibility = (patch: Partial<AllNotesFileVisibility>) => {
+    setAllNotesFileVisibility({ ...allNotesFileVisibility, ...patch })
+  }
+
   return (
     <>
       <SectionHeading
@@ -804,6 +872,35 @@ function VaultContentSettingsSection({
         onChange={setHideGitignoredFiles}
         testId="settings-hide-gitignored-files"
       />
+
+      <div className="space-y-3 pt-1">
+        <SectionHeading
+          title={t('settings.allNotesVisibility.title')}
+          description={t('settings.allNotesVisibility.description')}
+        />
+
+        <SettingsCheckboxRow
+          label={t('settings.allNotesVisibility.pdfs')}
+          description={t('settings.allNotesVisibility.pdfsDescription')}
+          checked={allNotesFileVisibility.pdfs}
+          onChange={(checked) => updateAllNotesFileVisibility({ pdfs: checked })}
+          testId="settings-all-notes-show-pdfs"
+        />
+        <SettingsCheckboxRow
+          label={t('settings.allNotesVisibility.images')}
+          description={t('settings.allNotesVisibility.imagesDescription')}
+          checked={allNotesFileVisibility.images}
+          onChange={(checked) => updateAllNotesFileVisibility({ images: checked })}
+          testId="settings-all-notes-show-images"
+        />
+        <SettingsCheckboxRow
+          label={t('settings.allNotesVisibility.unsupported')}
+          description={t('settings.allNotesVisibility.unsupportedDescription')}
+          checked={allNotesFileVisibility.unsupported}
+          onChange={(checked) => updateAllNotesFileVisibility({ unsupported: checked })}
+          testId="settings-all-notes-show-unsupported"
+        />
+      </div>
     </>
   )
 }
@@ -826,7 +923,8 @@ function AiAgentSettingsSection({
   aiAgentsStatus,
   defaultAiAgent,
   setDefaultAiAgent,
-}: Pick<SettingsBodyProps, 't' | 'aiAgentsStatus' | 'defaultAiAgent' | 'setDefaultAiAgent'>) {
+  onCopyMcpConfig,
+}: Pick<SettingsBodyProps, 't' | 'aiAgentsStatus' | 'defaultAiAgent' | 'setDefaultAiAgent' | 'onCopyMcpConfig'>) {
   return (
     <>
       <SectionHeading
@@ -845,6 +943,21 @@ function AiAgentSettingsSection({
       <div style={{ fontSize: 11, color: 'var(--muted-foreground)', lineHeight: 1.5 }}>
         {renderDefaultAiAgentSummary(defaultAiAgent, aiAgentsStatus, t)}
       </div>
+
+      {onCopyMcpConfig ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onCopyMcpConfig}
+          className="w-fit gap-2"
+          aria-label={t('ai.panel.copyMcpConfig')}
+          data-testid="settings-copy-mcp-config"
+        >
+          <Copy size={15} />
+          {t('ai.panel.copyMcpConfig')}
+        </Button>
+      ) : null}
     </>
   )
 }
@@ -1100,6 +1213,40 @@ function SettingsSwitchRow({
         <div style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>{description}</div>
       </div>
       <Switch checked={checked} onCheckedChange={onChange} aria-label={label} disabled={disabled} />
+    </label>
+  )
+}
+
+function SettingsCheckboxRow({
+  label,
+  description,
+  checked,
+  onChange,
+  testId,
+}: {
+  label: string
+  description: string
+  checked: boolean
+  onChange: (value: boolean) => void
+  testId: string
+}) {
+  return (
+    <label className="flex items-start gap-3" style={{ cursor: 'pointer' }} data-testid={testId}>
+      <Checkbox
+        checked={checked}
+        onCheckedChange={(value) => onChange(isChecked(value))}
+        onKeyDown={(event) => {
+          if (event.key !== ' ' && event.key !== 'Spacebar') return
+          event.preventDefault()
+          onChange(!checked)
+        }}
+        aria-label={label}
+        className="mt-0.5"
+      />
+      <span className="space-y-1">
+        <span className="block" style={{ fontSize: 13, fontWeight: 500, color: 'var(--foreground)' }}>{label}</span>
+        <span className="block" style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>{description}</span>
+      </span>
     </label>
   )
 }

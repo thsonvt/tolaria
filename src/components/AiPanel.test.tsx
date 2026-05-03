@@ -7,6 +7,14 @@ import type { VaultEntry } from '../types'
 import { queueAiPrompt } from '../utils/aiPromptBridge'
 import { bindVaultConfigStore, getVaultConfig, resetVaultConfigStore } from '../utils/vaultConfigStore'
 
+const { trackEventMock } = vi.hoisted(() => ({
+  trackEventMock: vi.fn(),
+}))
+
+vi.mock('../lib/telemetry', () => ({
+  trackEvent: trackEventMock,
+}))
+
 // Mock the hooks and utils to isolate component tests
 let mockMessages: ReturnType<typeof import('../hooks/useCliAiAgent').useCliAiAgent>['messages'] = []
 let mockStatus: ReturnType<typeof import('../hooks/useCliAiAgent').useCliAiAgent>['status'] = 'idle'
@@ -80,6 +88,7 @@ describe('AiPanel', () => {
     mockClearConversation.mockReset()
     mockAddLocalMarker.mockReset()
     mockUseCliAiAgent.mockReset()
+    trackEventMock.mockClear()
     resetVaultConfigStore()
     bindVaultConfigStore({
       zoom: null,
@@ -141,6 +150,10 @@ describe('AiPanel', () => {
     expect(mockAddLocalMarker).toHaveBeenCalledWith(
       'AI permission mode changed to Power User. It will apply to the next message.',
     )
+    expect(trackEventMock).toHaveBeenCalledWith('ai_agent_permission_mode_changed', {
+      agent: 'claude_code',
+      permission_mode: 'power_user',
+    })
   })
 
   it('disables permission mode changes while the AI agent is running', () => {
@@ -184,6 +197,18 @@ describe('AiPanel', () => {
     expect(screen.getByTestId('ai-panel')).toBeTruthy()
   })
 
+  it('caps long AI agent drafts inside a scrollable composer while keeping send visible', () => {
+    render(<AiPanel onClose={vi.fn()} vaultPath="/tmp/vault" />)
+
+    const editor = screen.getByTestId('agent-input')
+    editor.textContent = Array.from({ length: 40 }, (_, index) => `Line ${index + 1}`).join('\n')
+    fireEvent.input(editor)
+
+    expect(editor).toHaveClass('max-h-[160px]', 'overflow-y-auto', 'overscroll-contain')
+    expect(editor).toHaveStyle({ maxHeight: '160px', overflowY: 'auto' })
+    expect(screen.getByTestId('agent-send')).toBeVisible()
+  })
+
   it('calls onClose when close button is clicked', () => {
     const onClose = vi.fn()
     render(<AiPanel onClose={onClose} vaultPath="/tmp/vault" />)
@@ -201,14 +226,10 @@ describe('AiPanel', () => {
     expect(mockClearConversation).toHaveBeenCalledOnce()
   })
 
-  it('copies the MCP config from the AI panel header action', () => {
-    const onCopyMcpConfig = vi.fn()
-    render(<AiPanel onClose={vi.fn()} onCopyMcpConfig={onCopyMcpConfig} vaultPath="/tmp/vault" />)
+  it('keeps the MCP config action out of the AI panel header', () => {
+    render(<AiPanel onClose={vi.fn()} vaultPath="/tmp/vault" />)
 
-    expect(screen.getByText('MCP config')).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: 'Copy MCP config' }))
-
-    expect(onCopyMcpConfig).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('button', { name: 'Copy MCP config' })).toBeNull()
   })
 
   it('renders empty state without context', () => {

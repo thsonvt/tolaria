@@ -11,6 +11,7 @@ import {
   type AiAgentId,
   type AiAgentReadiness,
 } from '../lib/aiAgents'
+import type { AppLocale } from '../lib/i18n'
 import { type NoteListItem } from '../utils/ai-context'
 import type { VaultEntry } from '../types'
 import { useAiPanelController, type AiPanelController } from './useAiPanelController'
@@ -21,12 +22,12 @@ export type { AiAgentMessage } from '../hooks/useCliAiAgent'
 
 interface AiPanelProps {
   onClose: () => void
-  onCopyMcpConfig?: () => void
   onOpenNote?: (path: string) => void
   onUnsupportedAiPaste?: (message: string) => void
   defaultAiAgent?: AiAgentId
   defaultAiAgentReadiness?: AiAgentReadiness
   defaultAiAgentReady?: boolean
+  locale?: AppLocale
   onFileCreated?: (relativePath: string) => void
   onFileModified?: (relativePath: string) => void
   onVaultChanged?: () => void
@@ -43,12 +44,12 @@ interface AiPanelProps {
 interface AiPanelViewProps {
   controller: AiPanelController
   onClose: () => void
-  onCopyMcpConfig?: () => void
   onOpenNote?: (path: string) => void
   onUnsupportedAiPaste?: (message: string) => void
   defaultAiAgent?: AiAgentId
   defaultAiAgentReadiness?: AiAgentReadiness
   defaultAiAgentReady?: boolean
+  locale?: AppLocale
   activeEntry?: VaultEntry | null
   entries?: VaultEntry[]
 }
@@ -60,12 +61,12 @@ function readinessFromReadyFlag(ready: boolean | undefined): AiAgentReadiness {
 export function AiPanelView({
   controller,
   onClose,
-  onCopyMcpConfig,
   onOpenNote,
   onUnsupportedAiPaste,
   defaultAiAgent: providedDefaultAiAgent,
   defaultAiAgentReadiness: providedDefaultAiAgentReadiness,
   defaultAiAgentReady: providedDefaultAiAgentReady,
+  locale = 'en',
   activeEntry,
   entries,
 }: AiPanelViewProps) {
@@ -117,19 +118,20 @@ export function AiPanelView({
       <AiPanelHeader
         agentLabel={agentLabel}
         agentReadiness={defaultAiAgentReadiness}
+        locale={locale}
         permissionMode={permissionMode}
         permissionModeDisabled={isActive}
         onPermissionModeChange={handlePermissionModeChange}
         onClose={onClose}
-        onCopyMcpConfig={onCopyMcpConfig}
         onNewChat={handleNewChat}
       />
       {activeEntry && (
-        <AiPanelContextBar activeEntry={activeEntry} linkedCount={linkedEntries.length} />
+        <AiPanelContextBar activeEntry={activeEntry} linkedCount={linkedEntries.length} locale={locale} />
       )}
       <AiPanelMessageHistory
         agentLabel={agentLabel}
         agentReadiness={defaultAiAgentReadiness}
+        locale={locale}
         messages={agent.messages}
         isActive={isActive}
         onOpenNote={onOpenNote}
@@ -140,6 +142,7 @@ export function AiPanelView({
         entries={entries ?? []}
         agentLabel={agentLabel}
         agentReadiness={defaultAiAgentReadiness}
+        locale={locale}
         input={input}
         inputRef={inputRef}
         isActive={isActive}
@@ -153,12 +156,12 @@ export function AiPanelView({
 
 export function AiPanel({
   onClose,
-  onCopyMcpConfig,
   onOpenNote,
   onUnsupportedAiPaste,
   defaultAiAgent: providedDefaultAiAgent,
   defaultAiAgentReadiness: providedDefaultAiAgentReadiness,
   defaultAiAgentReady: providedDefaultAiAgentReady,
+  locale = 'en',
   onFileCreated,
   onFileModified,
   onVaultChanged,
@@ -183,6 +186,7 @@ export function AiPanel({
     openTabs,
     noteList,
     noteListFilter,
+    locale,
     onOpenNote,
     onFileCreated,
     onFileModified,
@@ -193,12 +197,12 @@ export function AiPanel({
     <AiPanelView
       controller={controller}
       onClose={onClose}
-      onCopyMcpConfig={onCopyMcpConfig}
       onOpenNote={onOpenNote}
       onUnsupportedAiPaste={onUnsupportedAiPaste}
       defaultAiAgent={providedDefaultAiAgent}
       defaultAiAgentReadiness={defaultAiAgentReadiness}
       defaultAiAgentReady={providedDefaultAiAgentReady}
+      locale={locale}
       activeEntry={activeEntry}
       entries={entries}
     />

@@ -12,6 +12,9 @@ const forwardedArgs = process.argv.slice(2)
 const hasFileParallelismOverride = forwardedArgs.some((arg) =>
   arg === '--fileParallelism' || arg === '--no-file-parallelism'
 )
+const hasMaxWorkersOverride = forwardedArgs.some((arg) =>
+  arg === '--maxWorkers' || arg.startsWith('--maxWorkers=')
+)
 const maxAttempts = 2
 
 const packageManagerExec = process.env.npm_execpath
@@ -27,6 +30,17 @@ function isKnownVitestInternalStateFlake(output) {
   return output.includes('Vitest failed to access its internal state.')
     && /Test Files\s+\d+\s+passed\s+\(\d+\)/.test(output)
     && /Tests\s+\d+\s+passed\s+\(\d+\)/.test(output)
+}
+
+function isKnownVitestWorkerStartupFlake(output) {
+  return output.includes('[vitest-pool]: Failed to start forks worker')
+    && output.includes('[vitest-pool-runner]: Timeout waiting for worker to respond')
+    && /Test Files\s+\d+\s+passed\s+\(\d+\)/.test(output)
+    && /Tests\s+\d+\s+passed\s+\(\d+\)/.test(output)
+}
+
+function isKnownRetryableVitestFlake(output) {
+  return isKnownVitestInternalStateFlake(output) || isKnownVitestWorkerStartupFlake(output)
 }
 
 function appendCapturedOutput(output, chunk) {
@@ -46,10 +60,11 @@ async function runCoverageAttempt(attempt) {
 
   const commandArgs = [
     ...baseCommandArgs,
-    // Vitest 4.0.18 occasionally crashes during coverage worker teardown
-    // after all files pass, so serialize file execution unless a caller
-    // explicitly opts into a different file-parallelism mode.
-    ...(hasFileParallelismOverride ? [] : ['--no-file-parallelism']),
+    // Keep coverage fast enough for CI while avoiding the unbounded worker
+    // contention that makes a few DOM-heavy suites time out under full
+    // file parallelism. Callers can still opt into serial or wider runs.
+    ...(hasFileParallelismOverride ? [] : ['--fileParallelism']),
+    ...(hasMaxWorkersOverride ? [] : ['--maxWorkers=2']),
     `--coverage.reportsDirectory=${runCoverageDir}`,
     ...forwardedArgs,
   ]
@@ -135,9 +150,9 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     process.exit(0)
   }
 
-  // Retry once when Vitest itself flakes after a fully passing suite.
-  if (attempt < maxAttempts && isKnownVitestInternalStateFlake(run.output)) {
-    console.error(`Vitest hit a known internal-state teardown flake on attempt ${attempt}; retrying once...`)
+  // Retry once when Vitest itself flakes after a substantially passing suite.
+  if (attempt < maxAttempts && isKnownRetryableVitestFlake(run.output)) {
+    console.error(`Vitest hit a known worker/runtime flake on attempt ${attempt}; retrying once...`)
     await rm(run.runCoverageDir, { recursive: true, force: true })
     continue
   }

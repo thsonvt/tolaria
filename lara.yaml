@@ -18,8 +18,10 @@ locales:
     - pt-PT
     - es-419
     - zh-CN
+    - zh-TW
     - ja-JP
     - ko-KR
+    - pl-PL
 
 files:
   json:

@@ -29,6 +29,22 @@ If you run the desktop app on Linux, install Tauri's WebKit2GTK 4.1 dependencies
     libappindicator-gtk3-devel librsvg2-devel
   ```
 
+### Linux AppImage Wayland troubleshooting
+
+On some Wayland systems, the Linux AppImage may fail to launch with:
+
+```text
+Could not create default EGL display: EGL_BAD_PARAMETER. Aborting...
+```
+
+Recent Tolaria AppImages automatically disable unstable WebKitGTK AppImage rendering paths and retry startup with an architecture-matching system Wayland client library when they detect this class of AppImage + Wayland environment. If you are running an older build, use this workaround:
+
+```bash
+WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 LD_PRELOAD=/usr/lib64/libwayland-client.so.0 ./Tolaria*.AppImage
+```
+
+If your distribution stores the 64-bit library elsewhere, use that path instead, for example `/usr/lib/x86_64-linux-gnu/libwayland-client.so.0`. On 64-bit Fedora, avoid `/usr/lib/libwayland-client.so.0`; that path can point at a 32-bit library and be ignored by the loader with a wrong ELF class warning.
+
 ## Quick Start
 
 ```bash
@@ -52,6 +68,8 @@ pnpm playwright:regression  # Full Playwright regression suite
 ## Starter Vaults And Remotes
 
 `create_getting_started_vault` clones the public starter repo and then removes every git remote from the new local copy. That means Getting Started vaults open local-only by default. Users connect a compatible remote later through the bottom-bar `No remote` chip or the command palette, both of which feed the same `AddRemoteModal` and `git_add_remote` backend flow.
+
+Linux AppImage builds still use the user's system `git`. Before Tolaria spawns that `git` process, it removes AppImage loader overrides such as `LD_LIBRARY_PATH`, `LD_PRELOAD`, and `GIT_EXEC_PATH` so HTTPS clone helpers use the host git libraries instead of bundled AppImage libraries.
 
 ## Directory Structure
 
@@ -141,6 +159,7 @@ tolaria/
 │   ├── utils/                    # Pure utility functions (~48 files)
 │   │   ├── wikilinks.ts          # Wikilink preprocessing pipeline
 │   │   ├── frontmatter.ts        # TypeScript YAML parser
+│   │   ├── plainTextPaste.ts     # Shared Paste without Formatting command target registry
 │   │   ├── platform.ts           # Runtime platform + Linux chrome gating helpers
 │   │   ├── ai-agent.ts           # Agent stream utilities
 │   │   ├── ai-chat.ts            # Token estimation utilities
@@ -345,7 +364,7 @@ type SidebarSelection =
 
 ### Command Registry
 
-`useCommandRegistry` + `useAppCommands` build a centralized command registry. Commands are registered with labels, shortcuts, and handlers. The `CommandPalette` (Cmd+K) fuzzy-searches this registry. Settings commands can update installation-local preferences directly when they reuse an existing settings path, such as the light/dark theme-mode actions writing `settings.theme_mode`. Shortcut combos live in `appCommandCatalog.ts`; real keypresses always flow through `useAppKeyboard`, native menu clicks emit the same command IDs through `useMenuEvents`, and `appCommandDispatcher.ts` suppresses the duplicate native/renderer echo from a single shortcut. On macOS, any browser-reserved chord that WKWebView swallows before that path must also be added to the narrow `tauri-plugin-prevent-default` registration in `src-tauri/src/lib.rs`. On Linux, `LinuxTitlebar.tsx` and `LinuxMenuButton.tsx` reuse the same command IDs through `trigger_menu_command` because the native GTK menu bar is intentionally not mounted. The same shortcut manifest also declares the deterministic QA mode for each shortcut-capable command.
+`useCommandRegistry` + `useAppCommands` build a centralized command registry. Commands are registered with labels, shortcuts, and handlers. The `CommandPalette` (Cmd+K) fuzzy-searches this registry. Settings commands can update installation-local preferences directly when they reuse an existing settings path, such as the light/dark theme-mode actions writing `settings.theme_mode`. Shortcut combos live in `appCommandCatalog.ts`; real keypresses always flow through `useAppKeyboard`, native menu clicks emit the same command IDs through `useMenuEvents`, and `appCommandDispatcher.ts` suppresses the duplicate native/renderer echo from a single shortcut. Plain-text paste follows this same path: the command owns `Cmd+Shift+V`, the menu and palette expose the same action, and `plainTextPaste.ts` resolves the active rich/raw editor target or focused text control before reading clipboard text. On macOS, any browser-reserved chord that WKWebView swallows before that path must also be added to the narrow `tauri-plugin-prevent-default` registration in `src-tauri/src/lib.rs`. On Linux, `LinuxTitlebar.tsx` and `LinuxMenuButton.tsx` reuse the same command IDs through `trigger_menu_command` because the native GTK menu bar is intentionally not mounted. The same shortcut manifest also declares the deterministic QA mode for each shortcut-capable command.
 
 Commands whose availability depends on the current note or Git state must also flow through `update_menu_state` so the native menu stays in sync with the command palette. The deleted-note restore action in Changes view is the reference example: the row opens a deleted diff preview, the command palette exposes "Restore Deleted Note", and the Note menu enables the same action only while that preview is active.
 
@@ -390,7 +409,7 @@ BASE_URL="http://localhost:5173" npx playwright test tests/smoke/<slug>.spec.ts
 1. Write the Rust function in the appropriate module (`vault/`, `git/`, etc.)
 2. Add a command handler in `commands/`
 3. Register it in the `generate_handler![]` macro in `lib.rs`
-4. Call it from the frontend via `invoke()` in the appropriate hook
+4. Call it from the frontend via `invoke()` in the appropriate hook or utility, keeping native-only permission work behind the Tauri command boundary
 5. Add a mock handler in `mock-tauri.ts`
 
 ### Add a new component
@@ -402,7 +421,7 @@ BASE_URL="http://localhost:5173" npx playwright test tests/smoke/<slug>.spec.ts
 
 ### Add a new entity type
 
-1. Create a type document: `type/mytype.md` with `type: Type` frontmatter (icon, color, order, etc.)
+1. Create a type document at the vault root: `mytype.md` with `type: Type` frontmatter (icon, color, order, etc.)
 2. The sidebar section groups are auto-generated from type documents — no code change needed if `visible: true`
 3. Update `CreateNoteDialog.tsx` type options if users should be able to create it from the dialog
 4. Notes of this type are created at the vault root with `type: MyType` in frontmatter — no dedicated folder needed
@@ -426,11 +445,11 @@ BASE_URL="http://localhost:5173" npx playwright test tests/smoke/<slug>.spec.ts
 3. **Tool action display**: Edit `src/components/AiActionCard.tsx`
 4. **Permission-mode UI and request plumbing**: Edit `src/lib/aiAgentPermissionMode.ts`, `src/components/AiPanel*.tsx`, `src/hooks/useCliAiAgent.ts`, and `src/utils/streamAiAgent.ts`
 5. **Shared CLI runtime behavior**: Edit `src-tauri/src/cli_agent_runtime.rs` for process lifecycle, prompt wrapping, version probing, and common Tolaria MCP path handling.
-6. **Agent-specific arguments/events**: Edit the per-agent adapter modules (`claude_cli.rs`, `codex_cli.rs`, `opencode_*`, `pi_*`, `gemini_*`). Keep Codex sandboxed with active-vault `workspace-write`, keep Pi and Gemini on transient MCP config, and do not use dangerous permission bypasses unless an ADR explicitly designs a new mode.
+6. **Agent-specific arguments/events**: Edit the per-agent adapter modules (`claude_cli.rs`, `codex_cli.rs`, `opencode_*`, `pi_*`, `gemini_*`). Keep Codex Safe on `read-only` + `untrusted` and Codex Power User on active-vault `workspace-write` + `never`, keep Pi and Gemini on transient MCP config, and do not use dangerous permission bypasses unless an ADR explicitly designs a new mode. Gemini Power User intentionally uses Gemini's `yolo` mode per ADR-0103.
 
 ### Work with external MCP setup
 
-1. **Backend registration/status/snippets**: Edit `src-tauri/src/mcp.rs`; registration and manual config generation must verify Node.js first, resolve the packaged `mcp-server/` for macOS, Windows, Linux, and AppImage installs, and use an explicit stdio entry with `VAULT_PATH` plus `WS_UI_PORT=9711`
+1. **Backend registration/status/snippets**: Edit `src-tauri/src/mcp.rs`; registration and manual config generation must verify Node.js first, resolve the packaged `mcp-server/` for macOS, Windows, Linux package roots (`/usr/local/Tolaria`, `/usr/local/lib/tolaria`, `/usr/lib/tolaria`, `/usr/lib/tolaria/resources`), and AppImage installs, and use an explicit stdio entry with `VAULT_PATH` plus `WS_UI_PORT=9711`
 2. **Setup dialog copy/actions**: Edit `src/components/McpSetupDialog.tsx` and `src/hooks/useMcpStatus.ts`; users should see the Node.js prerequisite, the exact generated manual config, and a copy action before Tolaria writes third-party config files
 3. **Status hook/toasts**: Edit `src/hooks/useMcpStatus.ts` when setup, reconnect, disconnect, or failure messaging changes
 4. **Gemini CLI compatibility**: Keep `~/.gemini/settings.json` in the registration path list and keep optional `GEMINI.md` generation behind `restore_vault_ai_guidance`; app-managed Gemini sessions still require the user to install and sign in to Gemini CLI, but Tolaria supplies transient MCP settings when Gemini is selected as the default AI agent

@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { FilterBuilder } from './FilterBuilder'
-import { EmojiPicker } from './EmojiPicker'
 import type { FilterGroup, ViewDefinition } from '../types'
+import { translate, type AppLocale, type TranslationKey } from '../lib/i18n'
 
 type SaveViewResult = boolean | void
 type SaveViewHandler = (definition: ViewDefinition) => SaveViewResult | Promise<SaveViewResult>
@@ -15,6 +15,7 @@ interface CreateViewDialogProps {
   onClose: () => void
   onCreate: SaveViewHandler
   availableFields: string[]
+  locale?: AppLocale
   /** When provided, the dialog operates in edit mode with pre-populated fields. */
   editingView?: ViewDefinition | null
 }
@@ -26,6 +27,7 @@ interface CreateViewDialogFormProps {
   initialColor: string | null
   initialFilters: FilterGroup
   isEditing: boolean
+  locale: AppLocale
   onClose: () => void
   onCreate: SaveViewHandler
 }
@@ -37,12 +39,11 @@ function CreateViewDialogForm({
   initialColor,
   initialFilters,
   isEditing,
+  locale,
   onClose,
   onCreate,
 }: CreateViewDialogFormProps) {
   const [name, setName] = useState(initialName)
-  const [icon, setIcon] = useState(initialIcon)
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [filters, setFilters] = useState<FilterGroup>(initialFilters)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -60,7 +61,7 @@ function CreateViewDialogForm({
     if (!trimmed) return
     const definition: ViewDefinition = {
       name: trimmed,
-      icon: icon || null,
+      icon: initialIcon || null,
       color: initialColor,
       sort: null,
       filters,
@@ -72,65 +73,39 @@ function CreateViewDialogForm({
     try {
       const result = await onCreate(definition)
       if (result === false) {
-        setSaveError('Could not save view.')
+        setSaveError(translate(locale, 'viewDialog.saveError'))
       } else {
         shouldClose = true
       }
     } catch {
-      setSaveError('Could not save view.')
+      setSaveError(translate(locale, 'viewDialog.saveError'))
     }
 
     setIsSaving(false)
     if (shouldClose) onClose()
   }
 
-  const handleSelectEmoji = useCallback((emoji: string) => {
-    setIcon(emoji)
-    setShowEmojiPicker(false)
-  }, [])
-
-  const handleCloseEmojiPicker = useCallback(() => {
-    setShowEmojiPicker(false)
-  }, [])
-
   const isCreateDisabled = !name.trim()
 
   return (
     <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col gap-4">
-      <div className="flex gap-2">
-        <div className="w-16 space-y-1.5 relative">
-          <label className="text-xs font-medium text-muted-foreground">Icon</label>
-          <Button
-            type="button"
-            variant="outline"
-            className="flex h-9 w-full p-0 text-xl hover:bg-accent"
-            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-            title="Pick icon"
-          >
-            {icon || <span className="text-sm text-muted-foreground">📋</span>}
-          </Button>
-          {showEmojiPicker && (
-            <EmojiPicker onSelect={handleSelectEmoji} onClose={handleCloseEmojiPicker} />
-          )}
-        </div>
-        <div className="flex-1 space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Name</label>
-          <Input
-            ref={inputRef}
-            placeholder="e.g. Active Projects, Reading List..."
-            value={name}
-            onChange={(e) => {
-              setName(e.target.value)
-              if (saveError) setSaveError(null)
-            }}
-          />
-        </div>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-muted-foreground">{translate(locale, 'viewDialog.nameLabel')}</label>
+        <Input
+          ref={inputRef}
+          placeholder={translate(locale, 'viewDialog.namePlaceholder')}
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value)
+            if (saveError) setSaveError(null)
+          }}
+        />
       </div>
       {saveError && (
         <p role="alert" className="text-xs text-destructive">{saveError}</p>
       )}
       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
-        <label className="text-xs font-medium text-muted-foreground">Filters</label>
+        <label className="text-xs font-medium text-muted-foreground">{translate(locale, 'viewDialog.filtersLabel')}</label>
         <FilterBuilder
           group={filters}
           onChange={setFilters}
@@ -138,8 +113,12 @@ function CreateViewDialogForm({
         />
       </div>
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>Cancel</Button>
-        <Button type="submit" disabled={isCreateDisabled || isSaving}>{isEditing ? 'Save' : 'Create'}</Button>
+        <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
+          {translate(locale, 'common.cancel')}
+        </Button>
+        <Button type="submit" disabled={isCreateDisabled || isSaving}>
+          {translate(locale, isEditing ? 'common.save' : 'common.create')}
+        </Button>
       </DialogFooter>
     </form>
   )
@@ -157,13 +136,13 @@ function getInitialViewFormValues(
   }
 }
 
-function getDialogDescription(isEditing: boolean) {
+function getDialogDescription(isEditing: boolean): TranslationKey {
   return isEditing
-    ? 'Update the name, icon, and filters for this saved view.'
-    : 'Create a saved view by choosing a name, icon, and filter rules.'
+    ? 'viewDialog.description.edit'
+    : 'viewDialog.description.create'
 }
 
-export function CreateViewDialog({ open, onClose, onCreate, availableFields, editingView }: CreateViewDialogProps) {
+export function CreateViewDialog({ open, onClose, onCreate, availableFields, locale = 'en', editingView }: CreateViewDialogProps) {
   const isEditing = !!editingView
   const initialValues = getInitialViewFormValues(editingView, availableFields)
   const formKey = editingView ? `edit:${editingView.name}` : `create:${availableFields[0] ?? 'type'}`
@@ -172,9 +151,9 @@ export function CreateViewDialog({ open, onClose, onCreate, availableFields, edi
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose() }}>
       <DialogContent showCloseButton={false} className="flex max-h-[80vh] flex-col sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>{isEditing ? 'Edit View' : 'Create View'}</DialogTitle>
+          <DialogTitle>{translate(locale, isEditing ? 'viewDialog.title.edit' : 'viewDialog.title.create')}</DialogTitle>
           <DialogDescription className="sr-only">
-            {getDialogDescription(isEditing)}
+            {translate(locale, getDialogDescription(isEditing))}
           </DialogDescription>
         </DialogHeader>
         {open && (
@@ -186,6 +165,7 @@ export function CreateViewDialog({ open, onClose, onCreate, availableFields, edi
             initialColor={initialValues.color}
             initialFilters={initialValues.filters}
             isEditing={isEditing}
+            locale={locale}
             onClose={onClose}
             onCreate={onCreate}
           />

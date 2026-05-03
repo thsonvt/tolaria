@@ -2,6 +2,7 @@ import { memo, useCallback, type MouseEvent as ReactMouseEvent } from 'react'
 import type { FolderNode, SidebarSelection } from '../../types'
 import { FolderNameInput } from './FolderNameInput'
 import { FolderItemRow } from './FolderItemRow'
+import { FOLDER_ROW_CONTENT_INSET, getFolderConnectorLeft, getFolderDepthIndent } from './folderTreeLayout'
 import { translate, type AppLocale } from '../../lib/i18n'
 
 interface FolderTreeRowProps {
@@ -17,6 +18,7 @@ interface FolderTreeRowProps {
   onCancelRenameFolder?: () => void
   locale?: AppLocale
   renamingFolderPath?: string | null
+  rootPath?: string
   selection: SidebarSelection
 }
 
@@ -64,6 +66,7 @@ function FolderChildren({
   onCancelRenameFolder,
   locale,
   renamingFolderPath,
+  rootPath,
   selection,
 }: FolderTreeRowProps) {
   const isExpanded = expanded[node.path] ?? false
@@ -71,10 +74,11 @@ function FolderChildren({
   if (!isExpanded || !hasChildren) return null
 
   return (
-    <div className="relative" style={{ paddingLeft: 15 }}>
+    <div className="relative" data-testid={`folder-children:${node.path}`}>
       <div
         className="absolute top-0 bottom-0 bg-border"
-        style={{ left: 15 + depth * 16, width: 1, opacity: 0.3 }}
+        data-testid={`folder-connector:${node.path}`}
+        style={{ left: getFolderConnectorLeft(depth), width: 1 }}
       />
       {node.children.map((child) => (
         <FolderTreeRow
@@ -91,6 +95,7 @@ function FolderChildren({
           onCancelRenameFolder={onCancelRenameFolder}
           locale={locale}
           renamingFolderPath={renamingFolderPath}
+          rootPath={rootPath}
           selection={selection}
         />
       ))}
@@ -111,16 +116,18 @@ export const FolderTreeRow = memo(function FolderTreeRow({
   onCancelRenameFolder,
   locale = 'en',
   renamingFolderPath,
+  rootPath,
   selection,
 }: FolderTreeRowProps) {
   const isExpanded = expanded[node.path] ?? false
   const isRenaming = renamingFolderPath === node.path
   const isSelected = selection.kind === 'folder' && selection.path === node.path
-  const depthIndent = depth * 16
-  const contentInset = 16
+  const canMutateFolder = node.path.length > 0
+  const depthIndent = getFolderDepthIndent(depth)
+  const contentInset = FOLDER_ROW_CONTENT_INSET
   const selectFolder = useCallback(() => {
-    onSelect({ kind: 'folder', path: node.path })
-  }, [node.path, onSelect])
+    onSelect(node.path === '' ? { kind: 'folder', path: '', rootPath } : { kind: 'folder', path: node.path })
+  }, [node.path, onSelect, rootPath])
   const row = (
     <FolderItemRow
       contentInset={contentInset}
@@ -128,12 +135,10 @@ export const FolderTreeRow = memo(function FolderTreeRow({
       isExpanded={isExpanded}
       isSelected={isSelected}
       node={node}
-      onDeleteFolder={onDeleteFolder}
       onOpenMenu={onOpenMenu}
       onSelect={selectFolder}
-      onStartRenameFolder={onStartRenameFolder}
+      onStartRenameFolder={canMutateFolder ? onStartRenameFolder : undefined}
       onToggle={onToggle}
-      locale={locale}
     />
   )
 
@@ -162,6 +167,7 @@ export const FolderTreeRow = memo(function FolderTreeRow({
         onCancelRenameFolder={onCancelRenameFolder}
         locale={locale}
         renamingFolderPath={renamingFolderPath}
+        rootPath={rootPath}
         selection={selection}
       />
     </>

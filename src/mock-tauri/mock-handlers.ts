@@ -344,6 +344,7 @@ export const mockHandlers: Record<string, (args: any) => any> = {
     mockThoughts = []
     return null
   },
+  validate_note_content: (args: { path: string; content: string }) => (MOCK_CONTENT[args.path] ?? '') === args.content,
   get_all_content: () => MOCK_CONTENT,
   get_file_history: (args: { path: string }) => mockFileHistory(args.path),
   get_modified_files: () => {
@@ -549,6 +550,8 @@ export const mockHandlers: Record<string, (args: any) => any> = {
       },
     },
   }, null, 2),
+  copy_text_to_clipboard: () => null,
+  read_text_from_clipboard: () => '',
   sync_mcp_bridge_vault: (args: { vaultPath?: string | null }) => args.vaultPath ? 'started' : 'stopped',
   repair_vault: (): string => {
     mockVaultAiGuidanceStatus = {

@@ -10,6 +10,8 @@ import {
 import {
   ADD_THOUGHT_FROM_FORMATTING_TOOLBAR_EVENT,
 } from './tolariaEditorFormatting'
+import { insertPlainTextFromClipboardText } from '../utils/plainTextPaste'
+import { TooltipProvider } from './ui/tooltip'
 
 const state = vi.hoisted(() => ({
   capturedLinkToolbarProps: null as null | Record<string, unknown>,
@@ -282,6 +284,7 @@ function renderEditorHarness(
       onNavigateWikilink={vi.fn()}
       activeNotePath={options.activeNotePath}
     />,
+    { wrapper: TooltipProvider },
   )
 
   const container = screen.getByTestId('blocknote-view').closest('.editor__blocknote-container')
@@ -489,6 +492,25 @@ describe('SingleEditorView', () => {
     expect(onMentionItemClick).toHaveBeenCalledOnce()
   })
 
+  it('renders when a reload returns an entry with missing suggestion metadata', () => {
+    const reloadedEntry = {
+      ...makeEntry({ path: '/vault/project/reloaded.md', title: 'Reloaded' }),
+      filename: undefined,
+      aliases: undefined,
+      isA: undefined,
+    } as unknown as VaultEntry
+
+    expect(() => {
+      render(
+        <SingleEditorView
+          editor={createEditor() as never}
+          entries={[reloadedEntry]}
+          onNavigateWikilink={vi.fn()}
+        />,
+      )
+    }).not.toThrow()
+  })
+
   it('ignores stale suggestion item clicks after the editor DOM disconnects', () => {
     const editor = createEditor()
     editor.domElement = document.createElement('div')
@@ -600,11 +622,14 @@ describe('SingleEditorView', () => {
     expect(onChange).toHaveBeenCalledTimes(1)
   })
 
-  it('copies selected fenced code text without markdown escape backslashes', () => {
+  it('copies selected fenced code text without markdown escape backslashes', async () => {
     const json = '{\n  "id": "Demo"\n}'
     const { container } = renderEditorHarness()
     const { codeBlock, code } = createCodeBlockFixture(json)
-    container.appendChild(codeBlock)
+    await act(async () => {
+      container.appendChild(codeBlock)
+      await Promise.resolve()
+    })
     selectNodeContents(code)
 
     const clipboardData = { setData: vi.fn() }
@@ -613,12 +638,36 @@ describe('SingleEditorView', () => {
     expect(clipboardData.setData).toHaveBeenCalledWith('text/plain', json)
   })
 
-  it('does not override full-note copy selections that merely include a code block', () => {
+  it('copies fenced code from the code-block action button', async () => {
+    const json = '{\n  "id": "Demo"\n}'
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(window.navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    const { container, editor } = renderEditorHarness()
+    const { codeBlock } = createCodeBlockFixture(json)
+    act(() => {
+      container.appendChild(codeBlock)
+    })
+
+    fireEvent.mouseMove(codeBlock)
+    const copyButton = await screen.findByRole('button', { name: 'Copy code to clipboard' })
+    fireEvent.click(copyButton)
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(json))
+    expect(editor.focus).not.toHaveBeenCalled()
+  })
+
+  it('does not override full-note copy selections that merely include a code block', async () => {
     const { container } = renderEditorHarness()
     const paragraph = document.createElement('p')
     paragraph.textContent = 'Before'
     const { codeBlock, code } = createCodeBlockFixture('const value = 1')
-    container.append(paragraph, codeBlock)
+    await act(async () => {
+      container.append(paragraph, codeBlock)
+      await Promise.resolve()
+    })
 
     const range = document.createRange()
     range.setStartBefore(paragraph)
@@ -631,6 +680,18 @@ describe('SingleEditorView', () => {
     fireEvent.copy(code, { clipboardData })
 
     expect(clipboardData.setData).not.toHaveBeenCalled()
+  })
+
+  it('handles registered plain-text paste requests through BlockNote insertion', () => {
+    const { container, editor } = renderEditorHarness()
+
+    fireEvent.focus(container)
+
+    expect(insertPlainTextFromClipboardText('Plain\nText')).toBe(true)
+    expect(editor.focus).toHaveBeenCalled()
+    expect(editor.insertInlineContent).toHaveBeenCalledWith('Plain\nText', {
+      updateSelection: true,
+    })
   })
 
   it('routes clicks on the empty title wrapper back into the H1 block', async () => {

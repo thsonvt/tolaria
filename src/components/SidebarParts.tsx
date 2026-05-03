@@ -1,10 +1,12 @@
-import { type ComponentType, useState, useEffect, useRef } from 'react'
+import { type ComponentType } from 'react'
 import type { SidebarSelection } from '../types'
 import { cn } from '@/lib/utils'
 import { getTypeColor, getTypeLightColor } from '../utils/typeColors'
 import { type IconProps } from '@phosphor-icons/react'
 import { SIDEBAR_ITEM_PADDING } from './sidebar/sidebarStyles'
+import { useSidebarInlineRenameInput } from './sidebar/sidebarHooks'
 import { Button } from './ui/button'
+import { Input } from './ui/input'
 import { translate, type AppLocale } from '../lib/i18n'
 
 const SIDEBAR_COUNT_PILL_STYLE = {
@@ -118,21 +120,35 @@ export function SidebarCountPill({
   )
 }
 
+export function SidebarLoadingCountPill({ compact, testId = 'sidebar-count-skeleton' }: { compact?: boolean; testId?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-testid={testId}
+      className="inline-flex animate-pulse rounded-full bg-muted"
+      style={{ width: compact ? 22 : 28, height: compact ? 18 : 20 }}
+    />
+  )
+}
+
 function NavItemLabel({ label, compact }: { label: string; compact?: boolean }) {
   return <span className={cn("flex-1 font-medium", getNavItemTextClass(compact))}>{label}</span>
 }
 
 function NavItemCount({
   count,
+  countLoading,
   className,
   style,
   compact,
 }: {
   count?: number
+  countLoading?: boolean
   className?: string
   style?: React.CSSProperties
   compact?: boolean
 }) {
+  if (countLoading) return <SidebarLoadingCountPill compact={compact} />
   if (!hasSidebarCount(count)) return null
   return (
     <SidebarCountPill
@@ -172,6 +188,7 @@ function ClickableNavItem({
   emoji,
   label,
   count,
+  countLoading,
   isActive,
   activeClassName,
   badgeClassName,
@@ -186,6 +203,7 @@ function ClickableNavItem({
   emoji?: string | null
   label: string
   count?: number
+  countLoading?: boolean
   isActive?: boolean
   activeClassName: string
   badgeClassName?: string
@@ -206,6 +224,7 @@ function ClickableNavItem({
       <NavItemLabel label={label} compact={compact} />
       <NavItemCount
         count={count}
+        countLoading={countLoading}
         className={resolveBadgeClassName(isActive, activeBadgeClassName, badgeClassName)}
         style={resolveBadgeStyle(isActive, activeBadgeClassName, activeBadgeStyle, badgeStyle)}
         compact={compact}
@@ -214,11 +233,12 @@ function ClickableNavItem({
   )
 }
 
-export function NavItem({ icon: Icon, emoji, label, count, isActive, activeClassName = 'bg-primary/10 text-primary', badgeClassName, badgeStyle, activeBadgeClassName, activeBadgeStyle, onClick, disabled, disabledTooltip, compact }: {
+export function NavItem({ icon: Icon, emoji, label, count, countLoading, isActive, activeClassName = 'bg-primary/10 text-primary', badgeClassName, badgeStyle, activeBadgeClassName, activeBadgeStyle, onClick, disabled, disabledTooltip, compact }: {
   icon: ComponentType<IconProps>
   emoji?: string | null
   label: string
   count?: number
+  countLoading?: boolean
   isActive?: boolean
   activeClassName?: string
   badgeClassName?: string
@@ -230,7 +250,7 @@ export function NavItem({ icon: Icon, emoji, label, count, isActive, activeClass
   disabledTooltip?: string
   compact?: boolean
 }) {
-  const padding = getNavItemPadding(compact, hasSidebarCount(count))
+  const padding = getNavItemPadding(compact, countLoading || hasSidebarCount(count))
   if (disabled) {
     return (
       <DisabledNavItem
@@ -250,6 +270,7 @@ export function NavItem({ icon: Icon, emoji, label, count, isActive, activeClass
       emoji={emoji}
       label={label}
       count={count}
+      countLoading={countLoading}
       isActive={isActive}
       activeClassName={activeClassName}
       badgeClassName={badgeClassName}
@@ -276,6 +297,8 @@ export interface SectionContentProps {
   renameInitialValue?: string
   onRenameSubmit?: (value: string) => void
   onRenameCancel?: () => void
+  onStartRename?: (type: string) => void
+  onSelectTypeNote?: (type: string) => void
   locale?: AppLocale
 }
 
@@ -283,6 +306,7 @@ export function SectionContent({
   group, itemCount, selection, onSelect,
   onContextMenu, dragHandleProps,
   isRenaming, renameInitialValue, onRenameSubmit, onRenameCancel, locale,
+  onStartRename, onSelectTypeNote,
 }: SectionContentProps) {
   const { label, type, Icon, customColor } = group
   const { sectionColor, sectionLightColor } = resolveSectionColors(type, customColor)
@@ -301,6 +325,8 @@ export function SectionContent({
       renameInitialValue={renameInitialValue}
       onRenameSubmit={onRenameSubmit}
       onRenameCancel={onRenameCancel}
+      onStartRename={onStartRename ? () => onStartRename(type) : undefined}
+      onSelectTypeNote={onSelectTypeNote ? () => onSelectTypeNote(type) : undefined}
       locale={locale}
     />
   )
@@ -312,27 +338,28 @@ function InlineRenameInput({ initialValue, onSubmit, onCancel, locale }: {
   onCancel: () => void
   locale?: AppLocale
 }) {
-  const [value, setValue] = useState(initialValue)
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => { inputRef.current?.focus(); inputRef.current?.select() }, [])
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); onSubmit(value.trim()) }
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onCancel() }
-  }
+  const {
+    handleKeyDown,
+    inputRef,
+    setValue,
+    submitValue,
+    value,
+  } = useSidebarInlineRenameInput({
+    initialValue,
+    onCancel,
+    onSubmit: (nextValue) => onSubmit(nextValue.trim()),
+  })
 
   return (
-    <input
+    <Input
       ref={inputRef}
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onKeyDown={handleKeyDown}
-      onBlur={() => onSubmit(value.trim())}
+      onBlur={() => { void submitValue() }}
       onClick={(e) => e.stopPropagation()}
       aria-label={translate(locale ?? 'en', 'sidebar.section.name')}
-      className="flex-1 rounded border border-primary bg-background text-[13px] font-medium text-foreground outline-none"
-      style={{ padding: '1px 4px' }}
+      className="h-auto min-h-0 flex-1 rounded border-primary bg-background px-1 py-px text-[13px] font-medium text-foreground"
     />
   )
 }
@@ -386,6 +413,7 @@ function SectionHeaderLabel({
   renameInitialValue,
   onRenameSubmit,
   onRenameCancel,
+  onStartRename,
   locale,
 }: {
   type: string
@@ -396,6 +424,7 @@ function SectionHeaderLabel({
   renameInitialValue?: string
   onRenameSubmit?: (value: string) => void
   onRenameCancel?: () => void
+  onStartRename?: () => void
   locale?: AppLocale
 }) {
   const inlineRenameHandlers = resolveInlineRenameHandlers({
@@ -416,7 +445,18 @@ function SectionHeaderLabel({
     )
   }
 
-  return <span className="text-[13px] font-medium" style={{ marginLeft: 4, color: getSectionHeaderTitleColor(isActive, sectionColor) }}>{label}</span>
+  return (
+    <span
+      className="min-w-0 truncate text-[13px] font-medium"
+      style={{ marginLeft: 4, color: getSectionHeaderTitleColor(isActive, sectionColor) }}
+      onDoubleClick={(event) => {
+        event.stopPropagation()
+        onStartRename?.()
+      }}
+    >
+      {label}
+    </span>
+  )
 }
 
 function SectionHeaderCountPill({
@@ -438,22 +478,24 @@ function SectionHeaderCountPill({
   )
 }
 
-function SectionHeader({ label, type, Icon, sectionColor, sectionLightColor, itemCount, isActive, onSelect, onContextMenu, dragHandleProps, isRenaming, renameInitialValue, onRenameSubmit, onRenameCancel, locale }: {
+function SectionHeader({ label, type, Icon, sectionColor, sectionLightColor, itemCount, isActive, onSelect, onContextMenu, dragHandleProps, isRenaming, renameInitialValue, onRenameSubmit, onRenameCancel, onStartRename, onSelectTypeNote, locale }: {
   label: string; type: string; Icon: ComponentType<IconProps>
   sectionColor: string; sectionLightColor: string; itemCount: number; isActive: boolean
   onSelect: () => void; onContextMenu: (e: React.MouseEvent) => void
   dragHandleProps?: Record<string, unknown>
   isRenaming?: boolean; renameInitialValue?: string
   onRenameSubmit?: (value: string) => void; onRenameCancel?: () => void
+  onStartRename?: () => void; onSelectTypeNote?: () => void
   locale?: AppLocale
 }) {
   return (
     <div
       className={cn("group/section flex cursor-pointer select-none items-center justify-between rounded transition-colors", !isActive && "hover:bg-accent")}
-      style={{ padding: '6px 8px 6px 16px', borderRadius: 4, gap: 4, ...getSectionHeaderBackground(isActive, sectionLightColor) }}
+      style={{ padding: SIDEBAR_ITEM_PADDING.withCount, borderRadius: 4, gap: 4, ...getSectionHeaderBackground(isActive, sectionLightColor) }}
       {...dragHandleProps}
       onClick={getSectionSelectHandler(isRenaming, onSelect)}
       onContextMenu={getSectionContextMenuHandler(isRenaming, onContextMenu)}
+      onDoubleClick={!isRenaming ? onSelectTypeNote : undefined}
     >
       <div className="flex min-w-0 flex-1 items-center" style={{ gap: 4 }}>
         <Icon size={16} weight={getSectionHeaderIconWeight(isActive)} style={{ color: sectionColor, flexShrink: 0 }} />
@@ -466,10 +508,13 @@ function SectionHeader({ label, type, Icon, sectionColor, sectionLightColor, ite
           renameInitialValue={renameInitialValue}
           onRenameSubmit={onRenameSubmit}
           onRenameCancel={onRenameCancel}
+          onStartRename={onStartRename}
           locale={locale}
         />
       </div>
-      <SectionHeaderCountPill itemCount={itemCount} isActive={isActive} sectionColor={sectionColor} />
+      {!isRenaming && (
+        <SectionHeaderCountPill itemCount={itemCount} isActive={isActive} sectionColor={sectionColor} />
+      )}
     </div>
   )
 }

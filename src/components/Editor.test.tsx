@@ -43,6 +43,9 @@ const mockEditor = vi.hoisted(() => ({
 const blockNoteCreation = vi.hoisted(() => ({
   options: [] as unknown[],
 }))
+const blockNoteViewState = vi.hoisted(() => ({
+  onChange: null as (() => void) | null,
+}))
 
 // Mock BlockNote components
 vi.mock('@blocknote/core', () => ({
@@ -83,16 +86,23 @@ vi.mock('@blocknote/react', () => ({
   ComponentsContext: {
     Provider: ({ children }: PropsWithChildren) => <>{children}</>,
   },
-  BlockNoteViewRaw: ({ children, editable }: PropsWithChildren<{ editable?: boolean }>) => (
-    <div data-testid="blocknote-view" data-editable={editable !== false ? 'true' : 'false'}>
-      <div
-        contentEditable={editable !== false}
-        data-testid="blocknote-editable"
-        suppressContentEditableWarning
-      />
-      {children}
-    </div>
-  ),
+  BlockNoteViewRaw: ({
+    children,
+    editable,
+    onChange,
+  }: PropsWithChildren<{ editable?: boolean; onChange?: () => void }>) => {
+    blockNoteViewState.onChange = onChange ?? null
+    return (
+      <div data-testid="blocknote-view" data-editable={editable !== false ? 'true' : 'false'}>
+        <div
+          contentEditable={editable !== false}
+          data-testid="blocknote-editable"
+          suppressContentEditableWarning
+        />
+        {children}
+      </div>
+    )
+  },
   FormattingToolbarController: () => null,
   LinkToolbarController: () => null,
   EditLinkButton: () => null,
@@ -146,6 +156,7 @@ import {
 import type { VaultEntry } from '../types'
 import { bindVaultConfigStore, resetVaultConfigStore } from '../utils/vaultConfigStore'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { clearParsedNoteBlockCache } from '../hooks/editorParsedBlockCache'
 
 type EditorComponentProps = ComponentProps<typeof Editor>
 
@@ -227,6 +238,8 @@ function renderEditor(overrides: Partial<EditorComponentProps> = {}) {
 describe('Editor', () => {
   beforeEach(() => {
     blockNoteCreation.options = []
+    blockNoteViewState.onChange = null
+    clearParsedNoteBlockCache()
   })
 
   it('shows empty state when no tabs are open', () => {
@@ -283,6 +296,28 @@ describe('Editor', () => {
     expect(screen.getByRole('img', { name: 'photo.png' })).toHaveAttribute(
       'src',
       'asset://localhost/%2Fvault%2Fassets%2Fphoto.png',
+    )
+    expect(screen.queryByTestId('blocknote-view')).not.toBeInTheDocument()
+  })
+
+  it('renders an in-app PDF preview for binary PDF tabs', () => {
+    const pdfEntry: VaultEntry = {
+      ...mockEntry,
+      path: '/vault/assets/report.pdf',
+      filename: 'report.pdf',
+      title: 'report.pdf',
+      fileKind: 'binary',
+    }
+
+    renderEditor({
+      tabs: [{ entry: pdfEntry, content: '' }],
+      activeTabPath: pdfEntry.path,
+      entries: [pdfEntry],
+    })
+
+    expect(screen.getByTestId('pdf-file-preview')).toHaveAttribute(
+      'data',
+      'asset://localhost/%2Fvault%2Fassets%2Freport.pdf',
     )
     expect(screen.queryByTestId('blocknote-view')).not.toBeInTheDocument()
   })
@@ -368,6 +403,46 @@ describe('Editor', () => {
     })
   })
 
+  it('registers a rich-editor flush hook for pending BlockNote changes', async () => {
+    const onContentChange = vi.fn()
+    const flushPendingEditorContentRef = { current: null as ((path: string) => void) | null }
+    const originalMarkdownSerializer = mockEditor.blocksToMarkdownLossy.getMockImplementation()
+    mockEditor.replaceBlocks.mockClear()
+
+    try {
+      renderEditor({
+        tabs: [mockTab],
+        activeTabPath: mockEntry.path,
+        onContentChange,
+        flushPendingEditorContentRef,
+      })
+
+      await vi.waitFor(() => {
+        expect(blockNoteViewState.onChange).toEqual(expect.any(Function))
+        expect(flushPendingEditorContentRef.current).toEqual(expect.any(Function))
+      })
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+
+      mockEditor.blocksToMarkdownLossy.mockReturnValueOnce('# Test Project\n\nEdited rich body.\n')
+
+      act(() => {
+        blockNoteViewState.onChange?.()
+      })
+      expect(onContentChange).not.toHaveBeenCalled()
+
+      act(() => {
+        flushPendingEditorContentRef.current?.(mockEntry.path)
+      })
+
+      expect(onContentChange).toHaveBeenCalledWith(
+        mockEntry.path,
+        expect.stringContaining('Edited rich body.'),
+      )
+    } finally {
+      mockEditor.blocksToMarkdownLossy.mockImplementation(originalMarkdownSerializer)
+    }
+  })
+
   it('disables native text assistance on the rich editor editable surface', () => {
     renderEditor({
       tabs: [mockTab],
@@ -389,6 +464,26 @@ describe('Editor', () => {
 
     expect(screen.getByRole('button', { name: 'Open the raw editor' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Delete this note' })).toBeInTheDocument()
+  })
+
+  it('keeps editor chrome visible while active note content is loading', () => {
+    renderEditor({
+      tabs: [],
+      activeTabPath: mockEntry.path,
+      entries: [mockEntry],
+      inspectorCollapsed: false,
+      inspectorEntry: mockEntry,
+      inspectorContent: mockContent,
+    })
+
+    expect(screen.getByTestId('breadcrumb-filename-trigger')).toHaveTextContent('test')
+    expect(screen.getAllByText('Properties').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Select a note to start editing')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('blocknote-view')).not.toBeInTheDocument()
+
+    const skeleton = screen.getByTestId('editor-content-skeleton')
+    expect(skeleton.closest('.editor-content-wrapper')).not.toBeNull()
+    expect(skeleton.closest('.editor-scroll-area')).not.toBeNull()
   })
 
   it('hides the legacy title field for untitled draft notes', () => {
@@ -631,6 +726,57 @@ describe('Editor', () => {
     })
 
     resetVaultConfigStore()
+  })
+
+  it('opens raw mode from unchanged rich content without rewriting pasted markdown source', async () => {
+    resetVaultConfigStore()
+    bindVaultConfigStore(
+      {
+        zoom: null,
+        view_mode: null,
+        editor_mode: null,
+        tag_colors: null,
+        status_colors: null,
+        property_display_modes: null,
+        inbox: null,
+      },
+      vi.fn(),
+    )
+
+    const rawToggleRef = { current: (() => {}) as () => void }
+    const sourceContent = '---\ntitle: Pasted\n---\nFirst pasted line\nSecond pasted line\n'
+    const pastedTab = { entry: mockEntry, content: sourceContent }
+    const originalMarkdownSerializer = mockEditor.blocksToMarkdownLossy.getMockImplementation()
+    mockEditor.blocksToMarkdownLossy.mockReturnValue('First pasted line\\\\\n\\\\\nSecond pasted line\n')
+
+    try {
+      render(
+        <Editor
+          {...defaultProps}
+          tabs={[pastedTab]}
+          activeTabPath={mockEntry.path}
+          entries={[mockEntry]}
+          rawToggleRef={rawToggleRef}
+        />,
+      )
+
+      await vi.waitFor(() => {
+        expect(typeof rawToggleRef.current).toBe('function')
+      })
+
+      await act(async () => {
+        await rawToggleRef.current()
+      })
+
+      await vi.waitFor(() => {
+        expect(screen.getByTestId('raw-editor-codemirror').textContent).toContain('First pasted line')
+      })
+      expect(screen.getByTestId('raw-editor-codemirror').textContent).toContain('Second pasted line')
+      expect(screen.getByTestId('raw-editor-codemirror').textContent).not.toContain('\\\\')
+    } finally {
+      mockEditor.blocksToMarkdownLossy.mockImplementation(originalMarkdownSerializer)
+      resetVaultConfigStore()
+    }
   })
 })
 

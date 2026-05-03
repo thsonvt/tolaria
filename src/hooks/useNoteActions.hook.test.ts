@@ -106,11 +106,11 @@ describe('useNoteActions hook', () => {
       expectedType: 'Type',
       expectedPathFragment: 'recipe.md',
     },
-  ])('$name creates the expected entry', ({ run, expectedTitle, expectedType, expectedPathFragment }) => {
+  ])('$name creates the expected entry', async ({ run, expectedTitle, expectedType, expectedPathFragment }) => {
     const { result } = renderActions()
 
-    act(() => {
-      run(result)
+    await act(async () => {
+      await run(result)
     })
 
     expect(addEntry).toHaveBeenCalledTimes(1)
@@ -220,7 +220,11 @@ describe('useNoteActions hook', () => {
       await flushAsyncWork()
     })
     await act(async () => {
-      vi.advanceTimersByTime(RAPID_CREATE_NOTE_SETTLE_MS * 2)
+      vi.advanceTimersByTime(RAPID_CREATE_NOTE_SETTLE_MS)
+      await flushAsyncWork()
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(RAPID_CREATE_NOTE_SETTLE_MS)
       await flushAsyncWork()
     })
 
@@ -380,6 +384,7 @@ describe('useNoteActions hook', () => {
       expect(addPendingSave).toHaveBeenCalledWith(createdPath)
       expect(removePendingSave).toHaveBeenCalledWith(createdPath)
       expect(onNewNotePersisted).toHaveBeenCalledOnce()
+      expect(onNewNotePersisted).toHaveBeenCalledWith(createdPath)
       expect(addEntry).toHaveBeenCalledTimes(1)
       expect(result.current.tabs[0].entry.path).toMatch(/untitled-note-\d+\.md$/)
     })
@@ -397,6 +402,7 @@ describe('useNoteActions hook', () => {
       })
 
       expect(onNewNotePersisted).toHaveBeenCalledTimes(1)
+      expect(onNewNotePersisted).toHaveBeenCalledWith(expect.stringContaining('persist-callback.md'))
     })
 
     it('does not call onNewNotePersisted when disk write fails (Tauri)', async () => {
@@ -469,7 +475,11 @@ describe('useNoteActions hook', () => {
         await flushAsyncWork()
       })
       await act(async () => {
-        vi.advanceTimersByTime(RAPID_CREATE_NOTE_SETTLE_MS * 2)
+        vi.advanceTimersByTime(RAPID_CREATE_NOTE_SETTLE_MS)
+        await flushAsyncWork()
+      })
+      await act(async () => {
+        vi.advanceTimersByTime(RAPID_CREATE_NOTE_SETTLE_MS)
         await flushAsyncWork()
       })
 
@@ -497,10 +507,14 @@ describe('useNoteActions hook', () => {
   })
 
   describe('note open is read-only', () => {
-    it('does not sync title or reload entry when opening or reopening a note', async () => {
+    it('does not sync title or reload entry when reopening an identity-matched cached note', async () => {
       vi.mocked(isTauri).mockReturnValue(true)
       const entry = makeEntry({ path: '/test/vault/qa-test.md', filename: 'qa-test.md', title: 'Qa Test' })
-      vi.mocked(invoke).mockResolvedValueOnce('# Qa Test\n')
+      vi.mocked(invoke).mockImplementation(async (command) => {
+        if (command === 'validate_note_content') return true
+        if (command === 'get_note_content') return '# Qa Test\n'
+        return null
+      })
 
       const { result } = renderHook(() => useNoteActions(makeConfig([entry])))
 

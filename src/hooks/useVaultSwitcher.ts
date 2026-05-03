@@ -368,18 +368,15 @@ function applyInitialVaultTarget({
   resolvedDefaultPath,
   setSelectedVaultPath,
   setVaultPath,
-  onSwitchRef,
 }: {
   activeVault: string | null
   resolvedDefaultPath: string
   setSelectedVaultPath: Dispatch<SetStateAction<string | null>>
   setVaultPath: Dispatch<SetStateAction<string>>
-  onSwitchRef: MutableRefObject<() => void>
 }) {
   if (activeVault) {
     setVaultPath(activeVault)
     setSelectedVaultPath(activeVault)
-    onSwitchRef.current()
     return
   }
 
@@ -416,7 +413,6 @@ function useVaultCollections(
 
 function useLoadPersistedVaultState(
   store: PersistedVaultStore,
-  onSwitchRef: MutableRefObject<() => void>,
 ) {
   const {
     lastPersistedSnapshotRef,
@@ -450,7 +446,6 @@ function useLoadPersistedVaultState(
           resolvedDefaultPath,
           setSelectedVaultPath,
           setVaultPath,
-          onSwitchRef,
         })
       })
       .finally(() => {
@@ -460,7 +455,7 @@ function useLoadPersistedVaultState(
       })
 
     return () => { cancelled = true }
-  }, [lastPersistedSnapshotRef, onSwitchRef, setDefaultAvailable, setDefaultPath, setExtraVaults, setHiddenDefaults, setLoaded, setSelectedVaultPath, setVaultPath])
+  }, [lastPersistedSnapshotRef, setDefaultAvailable, setDefaultPath, setExtraVaults, setHiddenDefaults, setLoaded, setSelectedVaultPath, setVaultPath])
 }
 
 function usePersistedVaultStorage(store: PersistedVaultStore) {
@@ -485,7 +480,7 @@ function usePersistedVaultStorage(store: PersistedVaultStore) {
   }, [extraVaults, hiddenDefaults, lastPersistedSnapshotRef, loaded, selectedVaultPath])
 }
 
-function usePersistedVaultState(onSwitchRef: MutableRefObject<() => void>): PersistedVaultState {
+function usePersistedVaultState(): PersistedVaultState {
   const [vaultPath, setVaultPath] = useState(STATIC_DEFAULT_PATH)
   const [selectedVaultPath, setSelectedVaultPath] = useState<string | null>(null)
   const [extraVaults, setExtraVaults] = useState<VaultOption[]>([])
@@ -513,7 +508,7 @@ function usePersistedVaultState(onSwitchRef: MutableRefObject<() => void>): Pers
     vaultPath,
   }
 
-  useLoadPersistedVaultState(store, onSwitchRef)
+  useLoadPersistedVaultState(store)
   usePersistedVaultStorage(store)
 
   return {
@@ -1156,7 +1151,7 @@ export function useVaultSwitcher({ onSwitch, onToast }: UseVaultSwitcherOptions)
   const onToastRef = useRef(onToast)
   useEffect(() => { onSwitchRef.current = onSwitch; onToastRef.current = onToast })
 
-  const persistedState = usePersistedVaultState(onSwitchRef)
+  const persistedState = usePersistedVaultState()
   const {
     defaultAvailable,
     defaultPath,

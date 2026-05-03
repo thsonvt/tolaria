@@ -18,6 +18,7 @@ export type KeyboardActions = Pick<
   | 'onSave'
   | 'onFindInNote'
   | 'onReplaceInNote'
+  | 'onPastePlainText'
   | 'onOpenSettings'
   | 'onDeleteNote'
   | 'onArchiveNote'

@@ -10,6 +10,7 @@ pub(crate) fn build_command(
 ) -> Result<std::process::Command, String> {
     let settings_path = write_settings(settings_dir, &request.vault_path, request.permission_mode)?;
     let mut command = crate::hidden_command(binary);
+    crate::cli_agent_runtime::configure_agent_command_environment(&mut command, binary);
     command
         .args(build_args(request.permission_mode))
         .arg("--prompt")
@@ -26,7 +27,7 @@ pub(crate) fn build_command(
 fn build_args(permission_mode: AiAgentPermissionMode) -> Vec<String> {
     vec![
         "--output-format".into(),
-        "json".into(),
+        "stream-json".into(),
         "--approval-mode".into(),
         approval_mode(permission_mode).into(),
     ]
@@ -102,7 +103,7 @@ mod tests {
     }
 
     #[test]
-    fn command_uses_headless_json_mode_and_temp_settings() {
+    fn command_uses_headless_stream_json_mode_and_temp_settings() {
         let settings_dir = tempfile::tempdir().unwrap();
         let command =
             build_command(&PathBuf::from("gemini"), &request(), settings_dir.path()).unwrap();
@@ -114,12 +115,34 @@ mod tests {
 
         assert_eq!(command.get_program(), OsStr::new("gemini"));
         assert_eq!(actual_args[0], OsStr::new("--output-format"));
-        assert_eq!(actual_args[1], OsStr::new("json"));
+        assert_eq!(actual_args[1], OsStr::new("stream-json"));
         assert!(actual_args.contains(&OsStr::new("--prompt")));
         assert_eq!(actual_args.last(), Some(&OsStr::new("Rename the note")));
         assert_eq!(command.get_current_dir(), Some(Path::new("/tmp/vault")));
         assert!(settings_path.is_some());
         assert!(settings_dir.path().join("settings.json").exists());
+    }
+
+    #[test]
+    fn command_extends_path_with_resolved_homebrew_bin() {
+        let settings_dir = tempfile::tempdir().unwrap();
+        let command = build_command(
+            &PathBuf::from("/opt/homebrew/bin/gemini"),
+            &request(),
+            settings_dir.path(),
+        )
+        .unwrap();
+        let path_value = command
+            .get_envs()
+            .find(|(key, _)| *key == OsStr::new("PATH"))
+            .and_then(|(_, value)| value)
+            .expect("PATH should be set");
+        let paths = std::env::split_paths(path_value).collect::<Vec<_>>();
+
+        assert!(
+            paths.contains(&PathBuf::from("/opt/homebrew/bin")),
+            "PATH should include the resolved Gemini binary directory, got {paths:?}"
+        );
     }
 
     #[test]

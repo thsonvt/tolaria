@@ -14,6 +14,7 @@ function makeConfig(overrides: Record<string, unknown> = {}) {
     onCreateNote: vi.fn(),
     onCreateNoteOfType: vi.fn(),
     onSave: vi.fn(),
+    onPastePlainText: vi.fn(),
     onOpenSettings: vi.fn(),
     onDeleteNote: vi.fn(),
     onArchiveNote: vi.fn(),
@@ -25,8 +26,10 @@ function makeConfig(overrides: Record<string, unknown> = {}) {
     onToggleInspector: vi.fn(),
     onToggleDiff: vi.fn(),
     onToggleRawEditor: vi.fn(),
-    noteLayout: 'centered',
-    onToggleNoteLayout: vi.fn(),
+    noteWidth: 'normal',
+    defaultNoteWidth: 'normal',
+    onSetNoteWidth: vi.fn(),
+    onSetDefaultNoteWidth: vi.fn(),
     onToggleAIChat: vi.fn(),
     onOpenVault: vi.fn(),
     activeNoteModified: false,
@@ -48,6 +51,20 @@ function makeConfig(overrides: Record<string, unknown> = {}) {
 
 function findCommand(commands: CommandAction[], id: string): CommandAction | undefined {
   return commands.find(c => c.id === id)
+}
+
+function expectFolderCommandStates(overrides: Record<string, unknown>, expected: {
+  copy: boolean
+  delete: boolean
+  rename: boolean
+  reveal: boolean
+}) {
+  const { result } = renderHook(() => useCommandRegistry(makeConfig(overrides)))
+
+  expect(findCommand(result.current, 'reveal-selected-folder')?.enabled).toBe(expected.reveal)
+  expect(findCommand(result.current, 'copy-selected-folder-path')?.enabled).toBe(expected.copy)
+  expect(findCommand(result.current, 'rename-folder')?.enabled).toBe(expected.rename)
+  expect(findCommand(result.current, 'delete-folder')?.enabled).toBe(expected.delete)
 }
 
 describe('useCommandRegistry', () => {
@@ -343,20 +360,20 @@ describe('useCommandRegistry', () => {
     expect(findCommand(result.current, 'toggle-raw-editor')?.enabled).toBe(false)
   })
 
-  it('exposes a command palette action for the note layout preference', () => {
-    const onToggleNoteLayout = vi.fn()
-    const config = makeConfig({ noteLayout: 'centered', onToggleNoteLayout })
+  it('exposes command palette actions for note width modes', () => {
+    const onSetNoteWidth = vi.fn()
+    const config = makeConfig({ noteWidth: 'normal', onSetNoteWidth })
     const { result } = renderHook(() => useCommandRegistry(config))
-    const cmd = findCommand(result.current, 'toggle-note-layout')
+    const cmd = findCommand(result.current, 'set-note-width-wide')
 
     expect(cmd).toBeDefined()
     expect(cmd!.group).toBe('View')
-    expect(cmd!.label).toBe('Use Left-Aligned Note Layout')
+    expect(cmd!.label).toBe('Use Wide Note Width')
     expect(cmd!.keywords).toContain('wide')
 
     cmd!.execute()
 
-    expect(onToggleNoteLayout).toHaveBeenCalledOnce()
+    expect(onSetNoteWidth).toHaveBeenCalledWith('wide')
   })
 
   it('exposes command palette actions for moving the selected saved view', () => {
@@ -406,11 +423,28 @@ describe('useCommandRegistry', () => {
     expect(findCommand(result.current, 'move-view-down')?.enabled).toBe(true)
   })
 
-  it('updates note layout command copy when left alignment is active', () => {
-    const config = makeConfig({ noteLayout: 'left' })
+  it('disables the command for the active note width mode', () => {
+    const config = makeConfig({ noteWidth: 'wide' })
     const { result } = renderHook(() => useCommandRegistry(config))
 
-    expect(findCommand(result.current, 'toggle-note-layout')?.label).toBe('Use Centered Note Layout')
+    expect(findCommand(result.current, 'set-note-width-wide')?.enabled).toBe(false)
+    expect(findCommand(result.current, 'set-note-width-normal')?.enabled).toBe(true)
+  })
+
+  it('exposes command palette actions for the default note width', () => {
+    const onSetDefaultNoteWidth = vi.fn()
+    const config = makeConfig({ defaultNoteWidth: 'normal', onSetDefaultNoteWidth })
+    const { result } = renderHook(() => useCommandRegistry(config))
+    const cmd = findCommand(result.current, 'set-default-note-width-wide')
+
+    expect(cmd).toMatchObject({
+      label: 'Use Wide Note Width by Default',
+      group: 'View',
+      enabled: true,
+    })
+
+    cmd!.execute()
+    expect(onSetDefaultNoteWidth).toHaveBeenCalledWith('wide')
   })
 
   it('exposes command palette actions for light and dark mode', () => {
@@ -463,35 +497,33 @@ describe('useCommandRegistry', () => {
   })
 
   it('enables folder commands when a folder is selected', () => {
-    const config = makeConfig({
+    expectFolderCommandStates({
       selection: { kind: 'folder', path: 'projects' },
       onRenameFolder: vi.fn(),
       onDeleteFolder: vi.fn(),
       onRevealSelectedFolder: vi.fn(),
       onCopySelectedFolderPath: vi.fn(),
-    })
-    const { result } = renderHook(() => useCommandRegistry(config))
-
-    expect(findCommand(result.current, 'reveal-selected-folder')?.enabled).toBe(true)
-    expect(findCommand(result.current, 'copy-selected-folder-path')?.enabled).toBe(true)
-    expect(findCommand(result.current, 'rename-folder')?.enabled).toBe(true)
-    expect(findCommand(result.current, 'delete-folder')?.enabled).toBe(true)
+    }, { copy: true, delete: true, rename: true, reveal: true })
   })
 
   it('disables folder commands outside folder selection', () => {
-    const config = makeConfig({
+    expectFolderCommandStates({
       selection: { kind: 'filter', filter: 'all' },
       onRenameFolder: vi.fn(),
       onDeleteFolder: vi.fn(),
       onRevealSelectedFolder: vi.fn(),
       onCopySelectedFolderPath: vi.fn(),
-    })
-    const { result } = renderHook(() => useCommandRegistry(config))
+    }, { copy: false, delete: false, rename: false, reveal: false })
+  })
 
-    expect(findCommand(result.current, 'reveal-selected-folder')?.enabled).toBe(false)
-    expect(findCommand(result.current, 'copy-selected-folder-path')?.enabled).toBe(false)
-    expect(findCommand(result.current, 'rename-folder')?.enabled).toBe(false)
-    expect(findCommand(result.current, 'delete-folder')?.enabled).toBe(false)
+  it('keeps root folder reveal and copy commands enabled without destructive actions', () => {
+    expectFolderCommandStates({
+      selection: { kind: 'folder', path: '', rootPath: '/Users/luca/Laputa' },
+      onRenameFolder: vi.fn(),
+      onDeleteFolder: vi.fn(),
+      onRevealSelectedFolder: vi.fn(),
+      onCopySelectedFolderPath: vi.fn(),
+    }, { copy: true, delete: false, rename: false, reveal: true })
   })
 
   it('executes folder command callbacks', () => {
@@ -555,6 +587,22 @@ describe('useCommandRegistry', () => {
       id: 'create-note',
       shortcut: formatShortcutDisplay({ display: '⌘N' }),
     })
+  })
+
+  it('exposes paste without formatting in the command palette', () => {
+    const onPastePlainText = vi.fn()
+    const { result } = renderHook(() => useCommandRegistry(makeConfig({ onPastePlainText })))
+    const command = findCommand(result.current, 'paste-plain-text')
+
+    expect(command).toMatchObject({
+      label: 'Paste without formatting',
+      group: 'Note',
+      shortcut: formatShortcutDisplay({ display: '⌘⇧V' }),
+      enabled: true,
+    })
+
+    command!.execute()
+    expect(onPastePlainText).toHaveBeenCalledOnce()
   })
 
   it('keeps a single canonical New Type command when the Type definition exists', () => {

@@ -30,9 +30,11 @@ export interface NoteActionsConfig {
   clearUnsaved?: (path: string) => void
   unsavedPaths?: Set<string>
   markContentPending?: (path: string, content: string) => void
-  onNewNotePersisted?: () => void
+  onNewNotePersisted?: (path: string) => void
   replaceEntry?: (oldPath: string, patch: Partial<VaultEntry> & { path: string }) => void
   onPathRenamed?: (oldPath: string, newPath: string) => void
+  /** Called when note loading proves the active vault path is no longer usable. */
+  onMissingActiveVault?: (entry: VaultEntry, error: unknown) => void | Promise<void>
   /** Called after frontmatter is written to disk — used for live-reloading theme CSS vars. */
   onFrontmatterContentChanged?: (path: string, content: string) => void
   /** Called after a frontmatter mutation is fully persisted, including follow-up renames. */
@@ -194,13 +196,19 @@ async function updateFrontmatterAndMaybeRename({
 }
 
 function buildTabManagementOptions(
-  config: Pick<NoteActionsConfig, 'flushBeforeNoteSwitch' | 'reloadVault' | 'setToastMessage'>,
+  config: Pick<NoteActionsConfig, 'flushBeforeNoteSwitch' | 'onMissingActiveVault' | 'reloadVault' | 'setToastMessage' | 'unsavedPaths'>,
 ) {
   const options: {
     beforeNavigate?: (fromPath: string, toPath: string) => Promise<void>
+    hasUnsavedChanges: (path: string) => boolean
+    onMissingActiveVault: (entry: VaultEntry, error: unknown) => void | Promise<void>
     onMissingNotePath: (entry: VaultEntry) => void
     onUnreadableNoteContent: (entry: VaultEntry) => void
   } = {
+    hasUnsavedChanges: (path) => config.unsavedPaths?.has(path) ?? false,
+    onMissingActiveVault: (entry, error) => {
+      void config.onMissingActiveVault?.(entry, error)
+    },
     onMissingNotePath: (entry) => {
       const label = entry.title.trim() || entry.filename
       config.setToastMessage(`"${label}" could not be opened because its file is missing or moved.`)

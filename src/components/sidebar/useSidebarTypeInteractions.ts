@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import type { VaultEntry } from '../../types'
-import { applyCustomization, useOutsideClick } from './sidebarHooks'
+import { applyCustomization, useOutsideClick, useSidebarContextMenu } from './sidebarHooks'
 
 interface SidebarTypeGroup {
   type: string
@@ -13,47 +13,44 @@ interface SidebarTypeInteractionsInput {
   onCustomizeType?: (typeName: string, icon: string, color: string) => void
   onUpdateTypeTemplate?: (typeName: string, template: string) => void
   onRenameSection?: (typeName: string, label: string) => void
+  onDeleteType?: (typeName: string) => void
 }
 
 function useSidebarTypeState() {
   const [customizeTarget, setCustomizeTarget] = useState<string | null>(null)
-  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null)
-  const [contextMenuType, setContextMenuType] = useState<string | null>(null)
   const [renamingType, setRenamingType] = useState<string | null>(null)
   const [renameInitialValue, setRenameInitialValue] = useState('')
   const [showCustomize, setShowCustomize] = useState(false)
 
-  const contextMenuRef = useRef<HTMLDivElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   const customizeRef = useRef<HTMLDivElement>(null)
-
-  const closeContextMenu = useCallback(() => {
-    setContextMenuPos(null)
-    setContextMenuType(null)
-  }, [])
+  const {
+    closeContextMenu,
+    contextMenu,
+    contextMenuRef,
+    openContextMenuFromPointer,
+  } = useSidebarContextMenu<string>()
 
   const closeCustomizeTarget = useCallback(() => setCustomizeTarget(null), [])
   const closeCustomize = useCallback(() => setShowCustomize(false), [])
   const cancelRename = useCallback(() => setRenamingType(null), [])
 
   useOutsideClick(customizeRef, showCustomize, closeCustomize)
-  useOutsideClick(contextMenuRef, !!contextMenuPos, closeContextMenu)
   useOutsideClick(popoverRef, !!customizeTarget, closeCustomizeTarget)
 
   return {
     cancelRename,
     closeContextMenu,
     closeCustomizeTarget,
-    contextMenuPos,
+    contextMenuPos: contextMenu?.pos ?? null,
     contextMenuRef,
-    contextMenuType,
+    contextMenuType: contextMenu?.target ?? null,
     customizeRef,
     customizeTarget,
+    openContextMenuFromPointer,
     popoverRef,
     renameInitialValue,
     renamingType,
-    setContextMenuPos,
-    setContextMenuType,
     setCustomizeTarget,
     setRenameInitialValue,
     setRenamingType,
@@ -100,6 +97,7 @@ export function useSidebarTypeInteractions({
   onCustomizeType,
   onUpdateTypeTemplate,
   onRenameSection,
+  onDeleteType,
 }: SidebarTypeInteractionsInput) {
   const state = useSidebarTypeState()
   const renameCallbacks = useSidebarRenameCallbacks({
@@ -112,10 +110,7 @@ export function useSidebarTypeInteractions({
   })
 
   const handleContextMenu = useCallback((event: React.MouseEvent, type: string) => {
-    event.preventDefault()
-    event.stopPropagation()
-    state.setContextMenuPos({ x: event.clientX, y: event.clientY })
-    state.setContextMenuType(type)
+    state.openContextMenuFromPointer(type, event)
   }, [state])
 
   const handleCustomize = useCallback((prop: 'icon' | 'color', value: string) => {
@@ -131,6 +126,11 @@ export function useSidebarTypeInteractions({
     state.setCustomizeTarget(type)
   }, [state])
 
+  const handleDeleteType = useCallback((type: string) => {
+    state.closeContextMenu()
+    onDeleteType?.(type)
+  }, [onDeleteType, state])
+
   return {
     closeCustomizeTarget: state.closeCustomizeTarget,
     contextMenuPos: state.contextMenuPos,
@@ -141,6 +141,7 @@ export function useSidebarTypeInteractions({
     handleChangeTemplate,
     handleContextMenu,
     handleCustomize,
+    handleDeleteType,
     handleRenameSubmit: renameCallbacks.handleRenameSubmit,
     handleStartRename: renameCallbacks.handleStartRename,
     openCustomizeTarget,

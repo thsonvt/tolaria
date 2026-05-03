@@ -8,7 +8,7 @@ import { useCommandRegistry } from './useCommandRegistry'
 import type { CommandAction } from './useCommandRegistry'
 import { useKeyboardNavigation } from './useKeyboardNavigation'
 import { useMenuEvents } from './useMenuEvents'
-import type { NoteLayout, SidebarSelection, SidebarFilter, VaultEntry } from '../types'
+import type { NoteWidthMode, SidebarSelection, SidebarFilter, VaultEntry } from '../types'
 import { requestAddRemote } from '../utils/addRemoteEvents'
 import type { NoteListFilter } from '../utils/noteListHelpers'
 import type { ViewMode } from './useViewMode'
@@ -27,6 +27,7 @@ interface AppCommandsConfig {
   onSearch: () => void
   onFindInNote?: () => void
   onReplaceInNote?: () => void
+  onPastePlainText: () => void
   onCreateNote: () => void
   onCreateNoteOfType: (type: string) => void
   onCaptureFromUrl?: () => void
@@ -48,8 +49,10 @@ interface AppCommandsConfig {
   onMoveSelectedViewDown?: () => void
   canMoveSelectedViewUp?: boolean
   canMoveSelectedViewDown?: boolean
-  noteLayout?: NoteLayout
-  onToggleNoteLayout?: () => void
+  noteWidth?: NoteWidthMode
+  defaultNoteWidth?: NoteWidthMode
+  onSetNoteWidth?: (mode: NoteWidthMode) => void
+  onSetDefaultNoteWidth?: (mode: NoteWidthMode) => void
   activeNoteModified: boolean
   onZoomIn: () => void
   onZoomOut: () => void
@@ -152,6 +155,7 @@ type CommandRegistryCoreActions = Pick<
   | 'onSave'
   | 'onFindInNote'
   | 'onReplaceInNote'
+  | 'onPastePlainText'
   | 'onOpenSettings'
   | 'onOpenFeedback'
   | 'onDeleteNote'
@@ -169,8 +173,10 @@ type CommandRegistryCoreActions = Pick<
   | 'onMoveSelectedViewDown'
   | 'canMoveSelectedViewUp'
   | 'canMoveSelectedViewDown'
-  | 'noteLayout'
-  | 'onToggleNoteLayout'
+  | 'noteWidth'
+  | 'defaultNoteWidth'
+  | 'onSetNoteWidth'
+  | 'onSetDefaultNoteWidth'
   | 'onToggleAIChat'
 >
 type CommandRegistryVaultActions = Pick<
@@ -240,6 +246,7 @@ function createKeyboardActions(
     onSearch: config.onSearch,
     onFindInNote: config.onFindInNote,
     onReplaceInNote: config.onReplaceInNote,
+    onPastePlainText: config.onPastePlainText,
     onCreateNote: config.onCreateNote,
     onCaptureFromUrl: config.onCaptureFromUrl,
     onSave: config.onSave,
@@ -294,6 +301,7 @@ function createMenuEventActionHandlers(
   | 'onDeleteNote'
   | 'onFindInNote'
   | 'onReplaceInNote'
+  | 'onPastePlainText'
   | 'onSearch'
   | 'onToggleRawEditor'
   | 'onToggleDiff'
@@ -320,6 +328,7 @@ function createMenuEventActionHandlers(
     onDeleteNote: config.onDeleteNote,
     onFindInNote: config.onFindInNote,
     onReplaceInNote: config.onReplaceInNote,
+    onPastePlainText: config.onPastePlainText,
     onSearch: config.onSearch,
     onToggleRawEditor: config.onToggleRawEditor,
     onToggleDiff: config.onToggleDiff,
@@ -443,8 +452,11 @@ function createCommandRegistryCoreConfig(
     canMoveSelectedViewDown: config.canMoveSelectedViewDown,
     onFindInNote: config.onFindInNote,
     onReplaceInNote: config.onReplaceInNote,
-    noteLayout: config.noteLayout,
-    onToggleNoteLayout: config.onToggleNoteLayout,
+    onPastePlainText: config.onPastePlainText,
+    noteWidth: config.noteWidth,
+    defaultNoteWidth: config.defaultNoteWidth,
+    onSetNoteWidth: config.onSetNoteWidth,
+    onSetDefaultNoteWidth: config.onSetDefaultNoteWidth,
     onToggleAIChat: config.onToggleAIChat,
   }
 }

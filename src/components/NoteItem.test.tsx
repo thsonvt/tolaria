@@ -58,6 +58,26 @@ describe('NoteItem', () => {
     expect(screen.getByTestId('type-icon')).toHaveAttribute('data-file-preview-kind', 'image')
   })
 
+  it('renders PDF files as clickable rows with a PDF file indicator', () => {
+    const pdfEntry = makeEntry({
+      path: '/vault/reports/brief.pdf',
+      filename: 'brief.pdf',
+      title: 'brief.pdf',
+      fileKind: 'binary',
+    })
+    const onClickNote = vi.fn()
+
+    render(<NoteItem entry={pdfEntry} isSelected={false} typeEntryMap={{}} onClickNote={onClickNote} />)
+
+    const item = screen.getByTestId('pdf-file-item')
+    expect(item.className).not.toContain('opacity-50')
+    expect(item).toHaveAttribute('title', 'Open PDF preview')
+
+    fireEvent.click(item)
+    expect(onClickNote).toHaveBeenCalledWith(pdfEntry, expect.any(Object))
+    expect(screen.getByTestId('type-icon')).toHaveAttribute('data-file-preview-kind', 'pdf')
+  })
+
   it('renders text files as clickable rows', () => {
     const textEntry = makeEntry({
       path: '/vault/config.yml',
@@ -72,6 +92,33 @@ describe('NoteItem', () => {
     const item = screen.getByText('config.yml').closest('div')!
     fireEvent.click(item)
     expect(onClickNote).toHaveBeenCalled()
+  })
+
+  it('uses CSS named colors from the Type document for note type indicators', () => {
+    const ideaType = makeEntry({
+      path: '/vault/type/idea.md',
+      filename: 'idea.md',
+      title: 'Idea',
+      isA: 'Type',
+      color: 'cyan',
+    })
+    const ideaEntry = makeEntry({
+      path: '/vault/ideas/native-cyan-idea.md',
+      filename: 'native-cyan-idea.md',
+      title: 'Native Cyan Idea',
+      isA: 'Idea',
+    })
+
+    render(
+      <NoteItem
+        entry={ideaEntry}
+        isSelected={false}
+        typeEntryMap={{ Idea: ideaType }}
+        onClickNote={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId('type-icon')).toHaveStyle({ color: 'rgb(0, 255, 255)' })
   })
 
   it('shows the title with filename metadata when a change status is present', () => {
@@ -179,18 +226,18 @@ describe('NoteItem', () => {
   })
 
   it('colors relationship chips by target type and opens the related note on Cmd+click only', () => {
-    const linkedProject = makeEntry({
-      path: '/vault/project/build-app.md',
+    const linkedIdea = makeEntry({
+      path: '/vault/ideas/build-app.md',
       filename: 'build-app.md',
       title: 'Build App',
-      isA: 'Project',
+      isA: 'Idea',
     })
-    const projectType = makeEntry({
-      path: '/vault/type/project.md',
-      filename: 'project.md',
-      title: 'Project',
+    const ideaType = makeEntry({
+      path: '/vault/type/idea.md',
+      filename: 'idea.md',
+      title: 'Idea',
       isA: 'Type',
-      color: 'red',
+      color: 'cyan',
       icon: 'wrench',
     })
     const sourceEntry = makeEntry({
@@ -198,7 +245,7 @@ describe('NoteItem', () => {
       filename: 'source.md',
       title: 'Source',
       isA: 'Note',
-      relationships: { 'Belongs to': ['[[project/build-app]]'] },
+      relationships: { 'Belongs to': ['[[ideas/build-app]]'] },
     })
     const onClickNote = vi.fn()
 
@@ -206,8 +253,8 @@ describe('NoteItem', () => {
       <NoteItem
         entry={sourceEntry}
         isSelected={false}
-        typeEntryMap={{ Project: projectType }}
-        allEntries={[sourceEntry, linkedProject, projectType]}
+        typeEntryMap={{ Idea: ideaType }}
+        allEntries={[sourceEntry, linkedIdea, ideaType]}
         displayPropsOverride={['Belongs to']}
         onClickNote={onClickNote}
       />,
@@ -216,13 +263,14 @@ describe('NoteItem', () => {
     const chip = screen.getByTestId('property-chip-belongs-to-0')
     expect(chip).toHaveTextContent('Build App')
     expect(chip.className).toContain('cursor-pointer')
-    expect(chip).toHaveStyle({ color: 'var(--accent-red)', backgroundColor: 'var(--accent-red-light)' })
+    expect(chip).toHaveStyle({ color: 'rgb(0, 255, 255)' })
+    expect(chip.getAttribute('style')).toContain('background-color: color-mix(in srgb, cyan 14%, transparent)')
 
     fireEvent.click(chip)
     expect(onClickNote).not.toHaveBeenCalled()
 
     fireEvent.click(chip, { metaKey: true })
-    expect(onClickNote).toHaveBeenCalledWith(linkedProject, expect.objectContaining({ metaKey: true }))
+    expect(onClickNote).toHaveBeenCalledWith(linkedIdea, expect.objectContaining({ metaKey: true }))
   })
 
   it('falls back to the built-in type icon for relationship chips when the Type has no custom icon', () => {

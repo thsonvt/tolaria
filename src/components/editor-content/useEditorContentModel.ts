@@ -2,7 +2,7 @@ import type React from 'react'
 import { useRef } from 'react'
 import type { useCreateBlockNote } from '@blocknote/react'
 import type { AppLocale } from '../../lib/i18n'
-import type { NoteLayout, NoteStatus, VaultEntry } from '../../types'
+import type { NoteWidthMode, NoteStatus, VaultEntry } from '../../types'
 import type { ThoughtRecord } from '../../utils/thoughts'
 import { useEditorTheme } from '../../hooks/useTheme'
 import { deriveEditorContentState } from './editorContentState'
@@ -15,7 +15,9 @@ export interface Tab {
 
 export interface EditorContentProps {
   activeTab: Tab | null
+  activeTabPath: string | null
   isLoadingNewTab: boolean
+  isVaultLoading?: boolean
   entries: VaultEntry[]
   editor: ReturnType<typeof useCreateBlockNote>
   thoughts?: ThoughtRecord[]
@@ -48,8 +50,8 @@ export interface EditorContentProps {
   findRequest?: RawEditorFindRequest | null
   rawLatestContentRef?: React.MutableRefObject<string | null>
   onRenameFilename?: (path: string, newFilenameStem: string) => void
-  noteLayout?: NoteLayout
-  onToggleNoteLayout?: () => void
+  noteWidth?: NoteWidthMode
+  onToggleNoteWidth?: () => void
   isConflicted?: boolean
   onKeepMine?: (path: string) => void
   onKeepTheirs?: (path: string) => void
@@ -64,6 +66,7 @@ export interface EditorContentProps {
 export function useEditorContentModel(props: EditorContentProps) {
   const {
     activeTab,
+    activeTabPath,
     entries,
     rawMode,
     diffMode,
@@ -85,6 +88,10 @@ export function useEditorContentModel(props: EditorContentProps) {
     activeStatus: props.activeStatus,
   })
   const showEditor = !diffMode && showContentEditor
+  const loadingEntry = !activeTab && activeTabPath
+    ? entries.find((entry) => entry.path === activeTabPath) ?? null
+    : null
+  const loadingTab = loadingEntry ? { entry: loadingEntry, content: '' } : null
 
   const breadcrumbBarRef = useRef<HTMLDivElement | null>(null)
 
@@ -96,6 +103,7 @@ export function useEditorContentModel(props: EditorContentProps) {
     effectiveRawMode,
     forceRawMode: isNonMarkdownText || isDeletedPreview,
     showEditor,
+    loadingTab,
     path,
     breadcrumbBarRef,
     wordCount,

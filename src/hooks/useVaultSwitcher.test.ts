@@ -123,6 +123,23 @@ describe('useVaultSwitcher', () => {
     expect(mockInvokeFn).toHaveBeenCalledWith('load_vault_list', {})
   })
 
+  it('does not run explicit switch side effects while hydrating the persisted vault', async () => {
+    mockVaultListStore = {
+      vaults: [{ label: 'My Vault', path: '/Users/luca/Laputa' }],
+      active_vault: '/Users/luca/Laputa',
+      hidden_defaults: [],
+    }
+
+    const { result } = renderHook(() => useVaultSwitcher({ onSwitch, onToast }))
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+
+    expect(result.current.vaultPath).toBe('/Users/luca/Laputa')
+    expect(onSwitch).not.toHaveBeenCalled()
+  })
+
   it('marks unavailable vaults when check_vault_exists returns false', async () => {
     mockVaultListStore = {
       vaults: [{ label: 'External', path: '/Volumes/USB/vault' }],

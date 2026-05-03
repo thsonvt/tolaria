@@ -1,15 +1,14 @@
 import { useMemo, type HTMLAttributes } from 'react'
-import type { VaultEntry, ViewFile } from '../../types'
+import type { VaultEntry, ViewDefinition, ViewFile } from '../../types'
 import { evaluateView } from '../../utils/viewFilters'
-import { Funnel, PencilSimple, Trash } from '@phosphor-icons/react'
-import { ArrowDown, ArrowUp, GripVertical } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Funnel } from '@phosphor-icons/react'
 import { NoteTitleIcon } from '../NoteTitleIcon'
 import { SidebarCountPill } from '../SidebarParts'
 import { SIDEBAR_ITEM_PADDING } from './sidebarStyles'
-import { translate, type AppLocale } from '../../lib/i18n'
-import type { ViewMoveDirection } from '../../utils/viewOrdering'
+import type { AppLocale } from '../../lib/i18n'
 import { ACCENT_COLORS } from '../../utils/typeColors'
+import { ViewContextMenu, ViewCustomizePanel, ViewRenameInput } from './SidebarViewActions'
+import { useSidebarViewItemInteractions } from './useSidebarViewItemInteractions'
 
 interface ViewAccent {
   color: string
@@ -22,10 +21,8 @@ interface SidebarViewItemProps {
   onSelect: () => void
   onEditView?: (filename: string) => void
   onDeleteView?: (filename: string) => void
-  onMoveView?: (filename: string, direction: ViewMoveDirection) => void
-  canMoveUp?: boolean
-  canMoveDown?: boolean
-  dragHandleProps?: HTMLAttributes<HTMLButtonElement>
+  onUpdateViewDefinition?: (filename: string, patch: Partial<ViewDefinition>) => void
+  dragHandleProps?: HTMLAttributes<HTMLDivElement>
   entries: VaultEntry[]
   locale?: AppLocale
 }
@@ -75,7 +72,7 @@ function ViewCountChip({
   return (
     <SidebarCountPill
       count={count}
-      className="text-muted-foreground transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
+      className="text-muted-foreground"
       style={isActive && accent ? { background: accent.color, color: 'var(--text-inverse)' } : { background: 'var(--muted)' }}
       testId="view-count-chip"
     />
@@ -88,9 +85,7 @@ export function SidebarViewItem({
   onSelect,
   onEditView,
   onDeleteView,
-  onMoveView,
-  canMoveUp = false,
-  canMoveDown = false,
+  onUpdateViewDefinition,
   dragHandleProps,
   entries,
   locale = 'en',
@@ -98,88 +93,78 @@ export function SidebarViewItem({
   const count = useMemo(() => evaluateView(view.definition, entries).length, [view.definition, entries])
   const showCount = count > 0
   const accent = resolveViewAccent(view.definition.color)
+  const interactions = useSidebarViewItemInteractions({
+    view,
+    onSelect,
+    onEditView,
+    onDeleteView,
+    onUpdateViewDefinition,
+  })
+  const {
+    closeCustomize,
+    contextMenuPos,
+    contextMenuRef,
+    customizePos,
+    customizeRef,
+    handleContextMenu,
+    handleCustomize,
+    handleDelete,
+    handleEdit,
+    handleRenameSubmit,
+    handleRowKeyDown,
+    isRenaming,
+    rowRef,
+    setIsRenaming,
+    startRename,
+  } = interactions
 
   return (
-    <div className="group relative">
+    <div className="relative">
       <div
+        ref={rowRef}
+        role="button"
+        tabIndex={0}
         className={`flex cursor-pointer select-none items-center gap-2 rounded transition-colors ${isActive ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-accent'}`}
         style={getViewRowStyle(showCount, isActive, accent)}
-        onClick={onSelect}
+        aria-label={view.definition.name}
+        {...(isRenaming ? undefined : dragHandleProps)}
+        onClick={isRenaming ? undefined : onSelect}
+        onContextMenu={isRenaming ? undefined : handleContextMenu}
+        onDoubleClick={isRenaming ? undefined : startRename}
+        onKeyDown={handleRowKeyDown}
       >
-        {dragHandleProps && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            className="-ml-1 h-5 w-4 min-w-0 cursor-grab rounded p-0 text-muted-foreground hover:bg-transparent hover:text-foreground active:cursor-grabbing"
-            title={translate(locale, 'sidebar.action.reorderView')}
-            aria-label={translate(locale, 'sidebar.action.reorderView')}
-            onClick={(event) => event.stopPropagation()}
-            {...dragHandleProps}
-          >
-            <GripVertical size={12} />
-          </Button>
-        )}
         <ViewIcon icon={view.definition.icon} isActive={isActive} accent={accent} />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{view.definition.name}</span>
-        <ViewCountChip count={count} isActive={isActive} accent={accent} />
+        {isRenaming ? (
+          <ViewRenameInput
+            initialValue={view.definition.name}
+            locale={locale}
+            onCancel={() => setIsRenaming(false)}
+            onSubmit={handleRenameSubmit}
+          />
+        ) : (
+          <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{view.definition.name}</span>
+        )}
+        {!isRenaming && <ViewCountChip count={count} isActive={isActive} accent={accent} />}
       </div>
-      <div className="pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
-        {onMoveView && (
-          <>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              className="h-5 w-5 min-w-0 rounded p-0 text-muted-foreground hover:bg-transparent hover:text-foreground disabled:opacity-30"
-              disabled={!canMoveUp}
-              onClick={(event) => { event.stopPropagation(); onMoveView(view.filename, 'up') }}
-              title={translate(locale, 'sidebar.action.moveViewUp')}
-              aria-label={translate(locale, 'sidebar.action.moveViewUp')}
-            >
-              <ArrowUp size={12} />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              className="h-5 w-5 min-w-0 rounded p-0 text-muted-foreground hover:bg-transparent hover:text-foreground disabled:opacity-30"
-              disabled={!canMoveDown}
-              onClick={(event) => { event.stopPropagation(); onMoveView(view.filename, 'down') }}
-              title={translate(locale, 'sidebar.action.moveViewDown')}
-              aria-label={translate(locale, 'sidebar.action.moveViewDown')}
-            >
-              <ArrowDown size={12} />
-            </Button>
-          </>
-        )}
-        {onEditView && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            className="h-5 w-5 min-w-0 rounded p-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
-            onClick={(event) => { event.stopPropagation(); onEditView(view.filename) }}
-            title={translate(locale, 'sidebar.action.editView')}
-            aria-label={translate(locale, 'sidebar.action.editView')}
-          >
-            <PencilSimple size={12} />
-          </Button>
-        )}
-        {onDeleteView && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            className="h-5 w-5 min-w-0 rounded p-0 text-muted-foreground hover:bg-transparent hover:text-destructive"
-            onClick={(event) => { event.stopPropagation(); onDeleteView(view.filename) }}
-            title={translate(locale, 'sidebar.action.deleteView')}
-            aria-label={translate(locale, 'sidebar.action.deleteView')}
-          >
-            <Trash size={12} />
-          </Button>
-        )}
-      </div>
+      <ViewContextMenu
+        pos={contextMenuPos}
+        canCustomize={!!onUpdateViewDefinition}
+        canDelete={!!onDeleteView}
+        canEdit={!!onEditView}
+        innerRef={contextMenuRef}
+        locale={locale}
+        onCustomize={handleCustomize}
+        onDelete={handleDelete}
+        onEdit={handleEdit}
+      />
+      <ViewCustomizePanel
+        pos={customizePos}
+        view={view}
+        innerRef={customizeRef}
+        locale={locale}
+        onClose={closeCustomize}
+        onUpdateViewDefinition={onUpdateViewDefinition}
+      />
     </div>
   )
 }

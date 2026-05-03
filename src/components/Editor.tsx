@@ -7,7 +7,7 @@ import { uploadImageFile } from '../hooks/useImageDrop'
 import { DEFAULT_AI_AGENT, type AiAgentId, type AiAgentReadiness } from '../lib/aiAgents'
 import { translate, type AppLocale } from '../lib/i18n'
 import { RUNTIME_STYLE_NONCE } from '../lib/runtimeStyleNonce'
-import type { VaultEntry, GitCommit, NoteLayout, NoteStatus } from '../types'
+import type { VaultEntry, GitCommit, NoteWidthMode, NoteStatus } from '../types'
 import type { NoteListItem } from '../utils/ai-context'
 import type { FrontmatterValue } from './Inspector'
 import { ResizeHandle } from './ResizeHandle'
@@ -17,6 +17,7 @@ import { useDragRegion } from '../hooks/useDragRegion'
 import { formatShortcutDisplay } from '../hooks/appCommandCatalog'
 import { EditorRightPanel } from './EditorRightPanel'
 import { EditorContent } from './EditorContent'
+import { EditorMemoryProbe } from './EditorMemoryProbe'
 import { FilePreview } from './FilePreview'
 import { schema } from './editorSchema'
 import type { RawEditorFindRequest } from './RawEditorFindBar'
@@ -25,6 +26,7 @@ import {
   resolvePendingRawExitContent,
   resolveRawModeContent,
 } from './editorRawModeSync'
+import { useRegisterEditorContentFlushes } from './editorContentFlushRegistration'
 import { useRawModeWithFlush } from './useRawModeWithFlush'
 import { createArrowLigaturesExtension } from './arrowLigaturesExtension'
 import { createMathInputExtension } from './mathInputExtension'
@@ -41,6 +43,7 @@ interface Tab {
 interface EditorProps {
   tabs: Tab[]
   activeTabPath: string | null
+  isVaultLoading?: boolean
   entries: VaultEntry[]
   thoughts?: ThoughtRecord[]
   activeMarkdown?: string
@@ -70,7 +73,6 @@ interface EditorProps {
   onInitializeProperties?: (path: string) => void
   showAIChat?: boolean
   onToggleAIChat?: () => void
-  onCopyMcpConfig?: () => void
   vaultPath?: string
   noteList?: NoteListItem[]
   noteListFilter?: { type: string | null; query: string }
@@ -86,8 +88,8 @@ interface EditorProps {
   onSave?: () => void
   /** Called when the user explicitly renames the filename from the breadcrumb. */
   onRenameFilename?: (path: string, newFilenameStem: string) => void
-  noteLayout?: NoteLayout
-  onToggleNoteLayout?: () => void
+  noteWidth?: NoteWidthMode
+  onToggleNoteWidth?: () => void
   canGoBack?: boolean
   canGoForward?: boolean
   onGoBack?: () => void
@@ -113,6 +115,8 @@ interface EditorProps {
   pendingThoughtJump?: ThoughtRecord | null
   onThoughtJumpHandled?: (thoughtId: string) => void
   onThoughtError?: (message: string) => void
+  /** Registers a hook that flushes pending rich-editor changes into app state before external actions. */
+  flushPendingEditorContentRef?: React.MutableRefObject<((path: string) => void) | null>
   /** Registers a hook that flushes the raw editor buffer into app state before external actions. */
   flushPendingRawContentRef?: React.MutableRefObject<((path: string) => void) | null>
   locale?: AppLocale
@@ -193,6 +197,7 @@ function useEditorSetup({
   rawToggleRef, diffToggleRef,
 }: EditorSetupParams) {
   const vaultPathRef = useRef(vaultPath)
+  const flushPendingEditorChangeRef = useRef<(() => boolean) | null>(null)
   useEffect(() => { vaultPathRef.current = vaultPath }, [vaultPath])
 
   const editor = useCreateBlockNote({
@@ -216,6 +221,7 @@ function useEditorSetup({
     activeTab?.content ?? null,
     onContentChange,
     vaultPath,
+    flushPendingEditorChangeRef,
   )
   const tabsForEditorSwap = applyPendingRawExitContent(tabs, pendingRawExitContent)
   const rawModeContent = resolveRawModeContent({ activeTab, rawModeContentOverride })
@@ -228,9 +234,17 @@ function useEditorSetup({
     }))
   }, [activeTabPath, setPendingRawExitContent, tabs])
 
-  const { handleEditorChange, editorMountedRef } = useEditorTabSwap({
+  const { handleEditorChange, flushPendingEditorChange, editorMountedRef } = useEditorTabSwap({
     tabs: tabsForEditorSwap, activeTabPath, editor, onContentChange, rawMode, vaultPath,
   })
+  useEffect(() => {
+    flushPendingEditorChangeRef.current = flushPendingEditorChange
+    return () => {
+      if (flushPendingEditorChangeRef.current === flushPendingEditorChange) {
+        flushPendingEditorChangeRef.current = null
+      }
+    }
+  }, [flushPendingEditorChange])
   useEditorFocus(editor, editorMountedRef)
 
   const { diffMode, diffContent, diffLoading, handleToggleDiff, handleViewCommitDiff } = useDiffMode({
@@ -253,43 +267,9 @@ function useEditorSetup({
     editor, activeTab, rawLatestContentRef, rawModeContent,
     rawMode, diffMode, diffContent, diffLoading,
     handleToggleDiffExclusive, handleToggleRawExclusive,
-    handleEditorChange, handleViewCommitDiff,
+    handleEditorChange, flushPendingEditorChange, handleViewCommitDiff,
     isLoadingNewTab, activeStatus, showDiffToggle,
   }
-}
-
-function useRegisterRawContentFlush({
-  activeTab,
-  rawLatestContentRef,
-  rawMode,
-  onContentChange,
-  flushPendingRawContentRef,
-}: {
-  activeTab: Tab | null
-  rawLatestContentRef: React.MutableRefObject<string | null>
-  rawMode: boolean
-  onContentChange?: (path: string, content: string) => void
-  flushPendingRawContentRef?: React.MutableRefObject<((path: string) => void) | null>
-}) {
-  const flushPendingRawContent = useCallback((path: string) => {
-    if (!rawMode || !activeTab || activeTab.entry.path !== path) return
-
-    const latestContent = rawLatestContentRef.current
-    if (latestContent === null || latestContent === activeTab.content) return
-
-    onContentChange?.(path, latestContent)
-  }, [activeTab, onContentChange, rawLatestContentRef, rawMode])
-
-  useEffect(() => {
-    if (!flushPendingRawContentRef) return
-
-    flushPendingRawContentRef.current = flushPendingRawContent
-    return () => {
-      if (flushPendingRawContentRef.current === flushPendingRawContent) {
-        flushPendingRawContentRef.current = null
-      }
-    }
-  }, [flushPendingRawContent, flushPendingRawContentRef])
 }
 
 function useEditorFindCommand({
@@ -331,8 +311,10 @@ function useEditorFindCommand({
 
 function EditorLayout({
   tabs,
+  activeTabPath,
   activeTab,
   isLoadingNewTab,
+  isVaultLoading,
   entries,
   editor,
   thoughts,
@@ -349,7 +331,6 @@ function EditorLayout({
   showDiffToggle,
   showAIChat,
   onToggleAIChat,
-  onCopyMcpConfig,
   inspectorCollapsed,
   onToggleInspector,
   onNavigateWikilink,
@@ -367,8 +348,8 @@ function EditorLayout({
   findRequest,
   rawLatestContentRef,
   onRenameFilename,
-  noteLayout,
-  onToggleNoteLayout,
+  noteWidth,
+  onToggleNoteWidth,
   isConflicted,
   onKeepMine,
   onKeepTheirs,
@@ -401,8 +382,10 @@ function EditorLayout({
   locale,
 }: {
   tabs: Tab[]
+  activeTabPath: string | null
   activeTab: Tab | null
   isLoadingNewTab: boolean
+  isVaultLoading?: boolean
   entries: VaultEntry[]
   editor: ReturnType<typeof useCreateBlockNote>
   thoughts?: ThoughtRecord[]
@@ -419,7 +402,6 @@ function EditorLayout({
   showDiffToggle: boolean
   showAIChat?: boolean
   onToggleAIChat?: () => void
-  onCopyMcpConfig?: () => void
   inspectorCollapsed: boolean
   onToggleInspector: () => void
   onNavigateWikilink: (target: string) => void
@@ -437,8 +419,8 @@ function EditorLayout({
   findRequest?: RawEditorFindRequest | null
   rawLatestContentRef: React.MutableRefObject<string | null>
   onRenameFilename?: (path: string, newFilenameStem: string) => void
-  noteLayout?: NoteLayout
-  onToggleNoteLayout?: () => void
+  noteWidth?: NoteWidthMode
+  onToggleNoteWidth?: () => void
   isConflicted?: boolean
   onKeepMine?: (path: string) => void
   onKeepTheirs?: (path: string) => void
@@ -471,11 +453,12 @@ function EditorLayout({
   locale?: AppLocale
 }) {
   const activeBinaryTab = activeTab?.entry.fileKind === 'binary' ? activeTab : null
+  const showEmptyState = tabs.length === 0 && activeTabPath === null && !isVaultLoading
 
   return (
     <div className="editor flex flex-col min-h-0 overflow-hidden bg-background text-foreground">
       <div className="flex flex-1 min-h-0">
-        {tabs.length === 0
+        {showEmptyState
           ? <EditorEmptyState locale={locale} />
           : activeBinaryTab
             ? (
@@ -488,7 +471,9 @@ function EditorLayout({
               )
             : <EditorContent
               activeTab={activeTab}
+              activeTabPath={activeTabPath}
               isLoadingNewTab={isLoadingNewTab}
+              isVaultLoading={isVaultLoading}
               entries={entries}
               editor={editor}
               thoughts={thoughts}
@@ -521,8 +506,8 @@ function EditorLayout({
               findRequest={findRequest}
               rawLatestContentRef={rawLatestContentRef}
               onRenameFilename={onRenameFilename}
-              noteLayout={noteLayout}
-              onToggleNoteLayout={onToggleNoteLayout}
+              noteWidth={noteWidth}
+              onToggleNoteWidth={onToggleNoteWidth}
               isConflicted={isConflicted}
               onKeepMine={onKeepMine}
               onKeepTheirs={onKeepTheirs}
@@ -552,7 +537,6 @@ function EditorLayout({
           noteListFilter={noteListFilter}
           onToggleInspector={onToggleInspector}
           onToggleAIChat={onToggleAIChat}
-          onCopyMcpConfig={onCopyMcpConfig}
           onNavigateWikilink={onNavigateWikilink}
           onViewCommitDiff={handleViewCommitDiff}
           onUpdateFrontmatter={onUpdateFrontmatter}
@@ -569,6 +553,7 @@ function EditorLayout({
           locale={locale}
         />
       </div>
+      <EditorMemoryProbe entries={entries} vaultPath={vaultPath} locale={locale} />
     </div>
   )
 }
@@ -578,6 +563,7 @@ export const Editor = memo(function Editor(props: EditorProps) {
     tabs, activeTabPath, entries, onNavigateWikilink,
     thoughts,
     activeMarkdown,
+    isVaultLoading,
     getNoteStatus,
     inspectorCollapsed, onToggleInspector, inspectorWidth,
     defaultAiAgent = DEFAULT_AI_AGENT, defaultAiAgentReadiness, defaultAiAgentReady = true,
@@ -586,24 +572,21 @@ export const Editor = memo(function Editor(props: EditorProps) {
     inspectorEntry, inspectorContent, gitHistory,
     onUpdateFrontmatter, onDeleteProperty, onAddProperty, onCreateMissingType, onCreateAndOpenNote, onInitializeProperties,
     showAIChat, onToggleAIChat,
-    onCopyMcpConfig,
     vaultPath, noteList, noteListFilter,
     onToggleFavorite, onToggleOrganized, onRevealFile, onCopyFilePath, onOpenExternalFile,
     onDeleteNote, onArchiveNote, onUnarchiveNote,
     onContentChange, onSave, onRenameFilename,
-    noteLayout, onToggleNoteLayout,
+    noteWidth, onToggleNoteWidth,
     onFileCreated, onFileModified, onVaultChanged,
     isConflicted, onKeepMine, onKeepTheirs,
     onSaveThought, onDeleteThought, pendingThoughtJump, onThoughtJumpHandled, onThoughtError,
-    flushPendingRawContentRef, findInNoteRef,
-    locale,
+    flushPendingEditorContentRef, flushPendingRawContentRef, findInNoteRef, locale,
   } = props
-
   const {
     editor, activeTab, rawLatestContentRef, rawModeContent,
     rawMode, diffMode, diffContent, diffLoading,
     handleToggleDiffExclusive, handleToggleRawExclusive,
-    handleEditorChange, handleViewCommitDiff,
+    handleEditorChange, flushPendingEditorChange, handleViewCommitDiff,
     isLoadingNewTab, activeStatus, showDiffToggle,
   } = useEditorSetup({
     tabs, activeTabPath, vaultPath, onContentChange,
@@ -620,9 +603,10 @@ export const Editor = memo(function Editor(props: EditorProps) {
     handleToggleRawExclusive,
     rawMode,
   })
-
-  useRegisterRawContentFlush({
+  useRegisterEditorContentFlushes({
     activeTab,
+    flushPendingEditorChange,
+    flushPendingEditorContentRef,
     rawLatestContentRef,
     rawMode,
     onContentChange,
@@ -634,8 +618,10 @@ export const Editor = memo(function Editor(props: EditorProps) {
   return (
     <EditorLayout
       tabs={tabs}
+      activeTabPath={props.activeTabPath}
       activeTab={activeTab}
       isLoadingNewTab={isLoadingNewTab}
+      isVaultLoading={isVaultLoading}
       entries={entries}
       editor={editor}
       thoughts={thoughts}
@@ -652,7 +638,6 @@ export const Editor = memo(function Editor(props: EditorProps) {
       showDiffToggle={showDiffToggle}
       showAIChat={showAIChat}
       onToggleAIChat={onToggleAIChat}
-      onCopyMcpConfig={onCopyMcpConfig}
       inspectorCollapsed={inspectorCollapsed}
       onToggleInspector={onToggleInspector}
       onNavigateWikilink={onNavigateWikilink}
@@ -670,8 +655,8 @@ export const Editor = memo(function Editor(props: EditorProps) {
       findRequest={findRequest}
       rawLatestContentRef={rawLatestContentRef}
       onRenameFilename={onRenameFilename}
-      noteLayout={noteLayout}
-      onToggleNoteLayout={onToggleNoteLayout}
+      noteWidth={noteWidth}
+      onToggleNoteWidth={onToggleNoteWidth}
       isConflicted={isConflicted}
       onKeepMine={onKeepMine}
       onKeepTheirs={onKeepTheirs}

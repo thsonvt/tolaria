@@ -8,7 +8,7 @@ interface CaptureFromUrlOptions {
   vaultPath?: string | null
 }
 
-interface CaptureUrlArgs {
+type CaptureUrlArgs = Record<string, unknown> & {
   url: string
   vaultPath?: string
 }

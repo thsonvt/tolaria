@@ -11,6 +11,7 @@ import { serializeUiLanguagePreference } from '../lib/i18n'
 import { normalizeReleaseChannel, serializeReleaseChannel } from '../lib/releaseChannel'
 import { normalizeThemeMode } from '../lib/themeMode'
 import type { Settings } from '../types'
+import { normalizeNoteWidthMode } from '../utils/noteWidth'
 
 async function invokeNativeIfAvailable<T>(command: string, tauriArgs: Record<string, unknown>): Promise<T | undefined> {
   try {
@@ -43,8 +44,12 @@ const EMPTY_SETTINGS: Settings = {
   release_channel: null,
   theme_mode: null,
   ui_language: null,
+  note_width_mode: null,
   default_ai_agent: null,
   hide_gitignored_files: null,
+  all_notes_show_pdfs: null,
+  all_notes_show_images: null,
+  all_notes_show_unsupported: null,
 }
 
 function normalizeSettings(settings: Settings): Settings {
@@ -55,8 +60,12 @@ function normalizeSettings(settings: Settings): Settings {
     ),
     theme_mode: normalizeThemeMode(settings.theme_mode),
     ui_language: serializeUiLanguagePreference(settings.ui_language),
+    note_width_mode: normalizeNoteWidthMode(settings.note_width_mode),
     default_ai_agent: normalizeStoredAiAgent(settings.default_ai_agent),
     hide_gitignored_files: settings.hide_gitignored_files ?? null,
+    all_notes_show_pdfs: settings.all_notes_show_pdfs ?? null,
+    all_notes_show_images: settings.all_notes_show_images ?? null,
+    all_notes_show_unsupported: settings.all_notes_show_unsupported ?? null,
   }
 }
 
