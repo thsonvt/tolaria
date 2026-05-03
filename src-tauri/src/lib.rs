@@ -376,6 +376,7 @@ macro_rules! app_invoke_handler {
             commands::get_note_content,
             commands::create_note_content,
             commands::save_note_content,
+            commands::capture_url,
             commands::list_thoughts,
             commands::read_note_thoughts,
             commands::save_thought,

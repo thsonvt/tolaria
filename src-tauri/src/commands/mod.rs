@@ -1,4 +1,5 @@
 mod ai;
+mod capture;
 mod delete;
 mod folders;
 mod git;
@@ -12,6 +13,7 @@ mod version;
 use std::borrow::Cow;
 
 pub use ai::*;
+pub use capture::*;
 pub use delete::*;
 pub use folders::*;
 pub use git::*;
