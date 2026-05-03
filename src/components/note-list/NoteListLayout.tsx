@@ -3,6 +3,7 @@ import { FilterPills } from './FilterPills'
 import { HighlightsList } from './HighlightsList'
 import { NoteListHeader } from './NoteListHeader'
 import { EntityView, ListView } from './NoteListViews'
+import { ThoughtsList } from './ThoughtsList'
 import type { useNoteListModel } from './useNoteListModel'
 
 type NoteListLayoutProps = ReturnType<typeof useNoteListModel> & {
@@ -47,6 +48,11 @@ function NoteListContent({
   modifiedFilesError,
   searched,
   noteListVirtuosoRef,
+  isThoughtsView,
+  thoughtGroups,
+  thoughtLoading,
+  thoughtError,
+  onOpenThought,
   isHighlightsView,
   highlightGroups,
   highlightLoading,
@@ -69,6 +75,11 @@ function NoteListContent({
   | 'modifiedFilesError'
   | 'searched'
   | 'noteListVirtuosoRef'
+  | 'isThoughtsView'
+  | 'thoughtGroups'
+  | 'thoughtLoading'
+  | 'thoughtError'
+  | 'onOpenThought'
   | 'isHighlightsView'
   | 'highlightGroups'
   | 'highlightLoading'
@@ -78,7 +89,15 @@ function NoteListContent({
 >) {
   return (
     <div className="flex-1 overflow-hidden" style={{ minHeight: 0 }}>
-      {isHighlightsView ? (
+      {isThoughtsView ? (
+        <ThoughtsList
+          groups={thoughtGroups}
+          loading={thoughtLoading}
+          error={thoughtError}
+          onOpenThought={onOpenThought ?? (() => {})}
+          locale={locale}
+        />
+      ) : isHighlightsView ? (
         <HighlightsList
           groups={highlightGroups}
           loading={highlightLoading}
@@ -135,6 +154,11 @@ function NoteListBody({
   isInboxView,
   modifiedFilesError,
   searched,
+  isThoughtsView,
+  thoughtGroups,
+  thoughtLoading,
+  thoughtError,
+  onOpenThought,
   isHighlightsView,
   highlightGroups,
   highlightLoading,
@@ -171,6 +195,11 @@ function NoteListBody({
   | 'isInboxView'
   | 'modifiedFilesError'
   | 'searched'
+  | 'isThoughtsView'
+  | 'thoughtGroups'
+  | 'thoughtLoading'
+  | 'thoughtError'
+  | 'onOpenThought'
   | 'locale'
   | 'showFilterPills'
   | 'noteListFilter'
@@ -182,11 +211,11 @@ function NoteListBody({
       ref={noteListContainerRef}
       className="relative flex flex-1 flex-col overflow-hidden outline-none"
       style={{ minHeight: 0 }}
-      tabIndex={isHighlightsView ? undefined : 0}
-      onBlur={isHighlightsView ? undefined : handleNoteListBlur}
-      onKeyDown={isHighlightsView ? undefined : handleListKeyDown}
-      onFocus={isHighlightsView ? undefined : handleNoteListFocus}
-      onClickCapture={isHighlightsView ? undefined : focusNoteList}
+      tabIndex={isHighlightsView || isThoughtsView ? undefined : 0}
+      onBlur={isHighlightsView || isThoughtsView ? undefined : handleNoteListBlur}
+      onKeyDown={isHighlightsView || isThoughtsView ? undefined : handleListKeyDown}
+      onFocus={isHighlightsView || isThoughtsView ? undefined : handleNoteListFocus}
+      onClickCapture={isHighlightsView || isThoughtsView ? undefined : focusNoteList}
       data-testid="note-list-container"
     >
       <NoteListContent
@@ -204,6 +233,11 @@ function NoteListBody({
         modifiedFilesError={modifiedFilesError}
         searched={searched}
         noteListVirtuosoRef={noteListVirtuosoRef}
+        isThoughtsView={isThoughtsView}
+        thoughtGroups={thoughtGroups}
+        thoughtLoading={thoughtLoading}
+        thoughtError={thoughtError}
+        onOpenThought={onOpenThought}
         isHighlightsView={isHighlightsView}
         highlightGroups={highlightGroups}
         highlightLoading={highlightLoading}
@@ -228,6 +262,7 @@ function NoteListLayoutHeader({
   title,
   typeDocument,
   isEntityView,
+  isThoughtsView,
   isHighlightsView,
   listSort,
   listDirection,
@@ -250,6 +285,7 @@ function NoteListLayoutHeader({
   | 'title'
   | 'typeDocument'
   | 'isEntityView'
+  | 'isThoughtsView'
   | 'isHighlightsView'
   | 'listSort'
   | 'listDirection'
@@ -268,7 +304,7 @@ function NoteListLayoutHeader({
   | 'setSearch'
   | 'handleSearchKeyDown'
 >) {
-  if (isHighlightsView) {
+  if (isHighlightsView || isThoughtsView) {
     return (
       <div
         className="flex h-[52px] shrink-0 items-center border-b border-border px-4"

@@ -1,4 +1,4 @@
-import { Archive, FileText, Highlighter, Tray } from '@phosphor-icons/react'
+import { Archive, ChatCenteredText, FileText, Highlighter, Tray } from '@phosphor-icons/react'
 import type { SidebarSelection } from '../../types'
 import { isSelectionActive, NavItem } from '../SidebarParts'
 import { translate, type AppLocale } from '../../lib/i18n'
@@ -10,6 +10,7 @@ interface SidebarTopNavProps {
   inboxCount: number
   activeCount: number
   highlightCount: number
+  thoughtCount: number
   archivedCount: number
   locale?: AppLocale
 }
@@ -21,6 +22,7 @@ export function SidebarTopNav({
   inboxCount,
   activeCount,
   highlightCount,
+  thoughtCount,
   archivedCount,
   locale = 'en',
 }: SidebarTopNavProps) {
@@ -57,6 +59,16 @@ export function SidebarTopNav({
         badgeStyle={{ background: 'var(--muted)' }}
         activeBadgeClassName="bg-primary text-primary-foreground"
         onClick={() => onSelect({ kind: 'filter', filter: 'highlights' })}
+      />
+      <NavItem
+        icon={ChatCenteredText}
+        label={translate(locale, 'sidebar.nav.thoughts')}
+        count={thoughtCount}
+        isActive={isSelectionActive(selection, { kind: 'filter', filter: 'thoughts' })}
+        badgeClassName="text-muted-foreground"
+        badgeStyle={{ background: 'var(--muted)' }}
+        activeBadgeClassName="bg-primary text-primary-foreground"
+        onClick={() => onSelect({ kind: 'filter', filter: 'thoughts' })}
       />
       <NavItem
         icon={Archive}

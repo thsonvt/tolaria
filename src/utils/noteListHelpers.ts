@@ -455,6 +455,7 @@ function filterByFilterType(entries: VaultEntry[], filter: string): VaultEntry[]
   if (filter === 'favorites') return entries.filter((e) => e.favorite && !e.archived)
   if (filter === 'pulse') return []
   if (filter === 'highlights') return []
+  if (filter === 'thoughts') return []
   return []
 }
 

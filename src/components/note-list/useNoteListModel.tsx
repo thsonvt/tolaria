@@ -12,6 +12,7 @@ import type { AppLocale } from '../../lib/i18n'
 import type { NoteListFilter } from '../../utils/noteListHelpers'
 import { countByFilter, countAllByFilter, countAllNotesByFilter } from '../../utils/noteListHelpers'
 import type { HighlightExcerpt, HighlightGroup } from '../../utils/highlightMarkdown'
+import type { ThoughtGroup, ThoughtRecord } from '../../utils/thoughts'
 import { NoteItem } from '../NoteItem'
 import { prefetchNoteContent } from '../../hooks/useTabManagement'
 import type { MultiSelectState } from '../../hooks/useMultiSelect'
@@ -434,6 +435,10 @@ export interface NoteListProps {
   highlightLoading?: boolean
   highlightError?: string | null
   onOpenHighlight?: (highlight: HighlightExcerpt) => void
+  thoughtGroups?: ThoughtGroup[]
+  thoughtLoading?: boolean
+  thoughtError?: string | null
+  onOpenThought?: (thought: ThoughtRecord) => void
   locale?: AppLocale
 }
 
@@ -448,10 +453,15 @@ function buildNoteListLayoutModel(params: {
   onOpenType: (entry: VaultEntry) => void
   locale: AppLocale
   isHighlightsView: boolean
+  isThoughtsView: boolean
   highlightGroups?: HighlightGroup[]
   highlightLoading?: boolean
   highlightError?: string | null
   onOpenHighlight?: (highlight: HighlightExcerpt) => void
+  thoughtGroups?: ThoughtGroup[]
+  thoughtLoading?: boolean
+  thoughtError?: string | null
+  onOpenThought?: (thought: ThoughtRecord) => void
   content: ReturnType<typeof useNoteListContent> & {
     handleSearchKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   }
@@ -491,10 +501,15 @@ function buildNoteListLayoutModel(params: {
     noteListVirtuosoRef: params.interaction.noteListKeyboard.virtuosoRef,
     entitySelection: params.interaction.entitySelection,
     isHighlightsView: params.isHighlightsView,
+    isThoughtsView: params.isThoughtsView,
     highlightGroups: params.highlightGroups ?? [],
     highlightLoading: params.highlightLoading ?? false,
     highlightError: params.highlightError ?? null,
     onOpenHighlight: params.onOpenHighlight,
+    thoughtGroups: params.thoughtGroups ?? [],
+    thoughtLoading: params.thoughtLoading ?? false,
+    thoughtError: params.thoughtError ?? null,
+    onOpenThought: params.onOpenThought,
     searchedGroups: params.content.searchedGroups,
     collapsedGroups: params.interaction.collapsedGroups,
     sortPrefs: params.content.sortPrefs,
@@ -554,12 +569,17 @@ export function useNoteListModel({
   highlightLoading,
   highlightError,
   onOpenHighlight,
+  thoughtGroups,
+  thoughtLoading,
+  thoughtError,
+  onOpenThought,
   locale = 'en',
 }: NoteListProps) {
   const selectedNotePath = selectedNote?.path ?? null
   const { modifiedPathSet, modifiedSuffixes, resolvedGetNoteStatus } = useModifiedFilesState(modifiedFiles, getNoteStatus)
   const { isInboxView } = useViewFlags(selection)
   const isHighlightsView = selection.kind === 'filter' && selection.filter === 'highlights'
+  const isThoughtsView = selection.kind === 'filter' && selection.filter === 'thoughts'
   const filterCounts = useFilterCounts(entries, selection)
   const content = useNoteListContent({
     entries,
@@ -654,10 +674,15 @@ export function useNoteListModel({
     onNoteListFilterChange,
     locale,
     isHighlightsView,
+    isThoughtsView,
     highlightGroups,
     highlightLoading,
     highlightError,
     onOpenHighlight,
+    thoughtGroups,
+    thoughtLoading,
+    thoughtError,
+    onOpenThought,
     content: {
       ...content,
       handleSearchKeyDown,

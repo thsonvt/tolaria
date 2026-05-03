@@ -57,6 +57,7 @@ interface SidebarProps {
   showInbox?: boolean
   inboxCount?: number
   highlightCount?: number
+  thoughtCount?: number
   locale?: AppLocale
   onCollapse?: () => void
 }
@@ -85,6 +86,7 @@ interface SidebarNavigationProps extends Pick<
   | 'showInbox'
   | 'inboxCount'
   | 'highlightCount'
+  | 'thoughtCount'
   | 'onCreateNewType'
   | 'locale'
 > {
@@ -126,6 +128,7 @@ function SidebarNavigation({
   showInbox = true,
   inboxCount = 0,
   highlightCount = 0,
+  thoughtCount = 0,
   locale = 'en',
   onCreateNewType,
   activeCount,
@@ -154,6 +157,7 @@ function SidebarNavigation({
         inboxCount={inboxCount}
         activeCount={activeCount}
         highlightCount={highlightCount}
+        thoughtCount={thoughtCount}
         archivedCount={archivedCount}
         locale={locale}
       />
@@ -259,6 +263,7 @@ export const Sidebar = memo(function Sidebar({
   showInbox = true,
   inboxCount = 0,
   highlightCount = 0,
+  thoughtCount = 0,
   locale = 'en',
   onCollapse,
   onCreateNewType,
@@ -321,6 +326,7 @@ export const Sidebar = memo(function Sidebar({
         showInbox={showInbox}
         inboxCount={inboxCount}
         highlightCount={highlightCount}
+        thoughtCount={thoughtCount}
         locale={locale}
         onCreateNewType={onCreateNewType}
         activeCount={activeCount}

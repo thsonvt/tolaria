@@ -237,6 +237,21 @@ describe('Sidebar', () => {
     expect(screen.getByText('2')).toBeInTheDocument()
   })
 
+  it('renders a top-level Thoughts row with count', () => {
+    render(
+      <Sidebar
+        entries={[]}
+        selection={defaultSelection}
+        onSelect={() => {}}
+        thoughtCount={3}
+      />,
+    )
+
+    const topNav = screen.getByTestId('sidebar-top-nav')
+    expect(within(topNav).getByText('Thoughts')).toBeInTheDocument()
+    expect(within(topNav).getByText('3')).toBeInTheDocument()
+  })
+
   it('renders section group headers only for types present in entries', () => {
     render(<Sidebar entries={mockEntries} selection={defaultSelection} onSelect={() => {}} />)
     expect(screen.getByText('Projects')).toBeInTheDocument()
