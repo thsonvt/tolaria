@@ -402,6 +402,10 @@ The `search_vault` Tauri command runs the scan in a blocking Tokio task and retu
 
 Highlights are stored inline in Markdown as `==highlighted text==`. The editor renders them through a BlockNote `highlight` style, but save and raw-mode sync restore the style back to Markdown before content leaves the editor. The Highlights sidebar collection derives its grouped index from note content at runtime, so there is no sidecar highlight database to merge or migrate.
 
+### Article Thoughts
+
+Thoughts are personal annotation records stored under `.tolaria/thoughts/` inside the selected vault. The Rust side owns vault-bounded sidecar reads and writes; the React side owns validation, grouping, filtering, and best-effort anchor matching. Source Markdown is not modified when a thought is created, edited, or deleted.
+
 ## Vault Cache System
 
 The vault cache (`src-tauri/src/vault/cache.rs`) accelerates vault scanning using git-based incremental updates.

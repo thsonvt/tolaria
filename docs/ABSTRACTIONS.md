@@ -557,6 +557,10 @@ Defined in `src/components/tolariaEditorFormatting.tsx` and `src/components/tola
 
 `src/utils/highlightMarkdown.ts` owns the portable highlight contract. It parses balanced `==...==` spans, creates deterministic runtime IDs, groups/filter excerpts for the sidebar collection, and translates between Markdown syntax and the BlockNote `highlight` style. Callers should not persist highlight IDs because they are derived from note path, offsets, and excerpt content.
 
+### `useThoughtsIndex`
+
+`useThoughtsIndex` lazily loads sidecar-backed `ThoughtRecord` objects, groups them by source note, and exposes create/update/delete actions. Editor surfaces use the same records to render margin pins and jump back to anchored passages.
+
 ### Markdown-to-BlockNote Pipeline
 
 ```mermaid

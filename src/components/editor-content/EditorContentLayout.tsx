@@ -397,6 +397,7 @@ export function EditorContentLayout(model: EditorContentModel) {
         vaultPath={vaultPath}
         editor={editor}
         entries={entries}
+        activeTab={activeTab}
         activeMarkdown={activeMarkdown}
         thoughts={thoughts}
         onNavigateWikilink={onNavigateWikilink}

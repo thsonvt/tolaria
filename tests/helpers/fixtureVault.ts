@@ -239,6 +239,44 @@ async function installFixtureVaultInitScript({ page, vaultPath, isGitRepo }: Fix
     const readCommandString = (commandArgs: FixtureCommandArgs, key: string, fallback = '') =>
       String(readCommandValue(commandArgs, key, fallback))
 
+    const joinFixturePath = (...segments: string[]) =>
+      segments
+        .map((segment, index) => {
+          const normalized = index === 0 ? segment.replace(/\/+$/, '') : segment.replace(/^\/+|\/+$/g, '')
+          return normalized
+        })
+        .filter(Boolean)
+        .join('/')
+
+    const notePathHex = (notePath: string) =>
+      Array.from(new TextEncoder().encode(notePath))
+        .map((byte) => byte.toString(16).padStart(2, '0'))
+        .join('')
+
+    const thoughtSidecarPath = (vaultPath: string, notePath: string) =>
+      joinFixturePath(vaultPath, '.tolaria', 'thoughts', `${notePathHex(notePath)}.json`)
+
+    const readThoughtFile = async (vaultPath: string, notePath: string) => {
+      const response = await nativeFetch(
+        `/api/vault/content?path=${encodeURIComponent(thoughtSidecarPath(vaultPath, notePath))}`,
+      )
+      if (!response.ok) return []
+
+      const data = await response.json() as { content: string }
+      const thoughts = JSON.parse(data.content) as unknown
+      return Array.isArray(thoughts) ? thoughts : []
+    }
+
+    const writeThoughtFile = async (vaultPath: string, notePath: string, thoughts: unknown[]) =>
+      readJson('/api/vault/save', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          path: thoughtSidecarPath(vaultPath, notePath),
+          content: JSON.stringify(thoughts, null, 2),
+        }),
+      })
+
     const buildFixtureStateHandlers = () => ({
       load_vault_list: () => activeVaultList,
       check_vault_exists: (commandArgs?: FixtureCommandArgs) =>
@@ -296,6 +334,30 @@ async function installFixtureVaultInitScript({ page, vaultPath, isGitRepo }: Fix
       get_all_content: (commandArgs?: FixtureCommandArgs) =>
         readJson(
           `/api/vault/all-content?path=${encodeURIComponent(readCommandString(commandArgs, 'path', resolvedVaultPath))}`,
+        ),
+      list_thoughts: async (commandArgs?: FixtureCommandArgs) => {
+        const vaultPath = readCommandString(commandArgs, 'vaultPath', resolvedVaultPath)
+        const entries = await readVaultList({ path: vaultPath }) as Array<{ path?: string }>
+        const thoughts = (
+          await Promise.all(
+            entries
+              .map((entry) => entry.path)
+              .filter((notePath): notePath is string => typeof notePath === 'string' && notePath.length > 0)
+              .map((notePath) => readThoughtFile(vaultPath, notePath)),
+          )
+        ).flat()
+
+        return thoughts.sort((left, right) => {
+          const leftRecord = left as { id?: string; updatedAt?: string }
+          const rightRecord = right as { id?: string; updatedAt?: string }
+          return String(rightRecord.updatedAt ?? '').localeCompare(String(leftRecord.updatedAt ?? ''))
+            || String(leftRecord.id ?? '').localeCompare(String(rightRecord.id ?? ''))
+        })
+      },
+      read_note_thoughts: (commandArgs?: FixtureCommandArgs) =>
+        readThoughtFile(
+          readCommandString(commandArgs, 'vaultPath', resolvedVaultPath),
+          readCommandString(commandArgs, 'notePath'),
         ),
       search_vault: (commandArgs?: FixtureCommandArgs) => {
         const resolvedPath = readCommandString(
@@ -376,6 +438,31 @@ async function installFixtureVaultInitScript({ page, vaultPath, isGitRepo }: Fix
           old_path: notePath,
           new_title: match[1].trim(),
         })
+      },
+      save_thought: async (commandArgs?: FixtureCommandArgs) => {
+        const thought = readCommandValue(commandArgs, 'thought') as { id?: string; notePath?: string }
+        if (!thought?.id || !thought.notePath) throw new Error('Missing thought id or note path')
+
+        const vaultPath = readCommandString(commandArgs, 'vaultPath', resolvedVaultPath)
+        const thoughts = await readThoughtFile(vaultPath, thought.notePath)
+        const nextThoughts = [
+          ...thoughts.filter((candidate) => (candidate as { id?: string }).id !== thought.id),
+          thought,
+        ]
+        await writeThoughtFile(vaultPath, thought.notePath, nextThoughts)
+        return thought
+      },
+      delete_thought: async (commandArgs?: FixtureCommandArgs) => {
+        const vaultPath = readCommandString(commandArgs, 'vaultPath', resolvedVaultPath)
+        const notePath = readCommandString(commandArgs, 'notePath')
+        const thoughtId = readCommandString(commandArgs, 'thoughtId')
+        const thoughts = await readThoughtFile(vaultPath, notePath)
+        await writeThoughtFile(
+          vaultPath,
+          notePath,
+          thoughts.filter((candidate) => (candidate as { id?: string }).id !== thoughtId),
+        )
+        return null
       },
     })
 

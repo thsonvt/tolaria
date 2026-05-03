@@ -816,8 +816,10 @@ function useThoughtJumpListener(options: {
       : Array.from(container.querySelectorAll<HTMLElement>('.bn-block'))
         .find((element) => element.textContent?.includes(thought.anchor.quote))
     if (!target) {
-      onThoughtError?.('Thought anchor could not be found in this note.')
-      onThoughtJumpHandled?.(thought.id)
+      if (source === 'event') {
+        onThoughtError?.('Thought anchor could not be found in this note.')
+        onThoughtJumpHandled?.(thought.id)
+      }
       return false
     }
 
@@ -841,7 +843,31 @@ function useThoughtJumpListener(options: {
     if (!pendingThoughtJump) return
     if (!thoughts.some((thought) => thought.id === pendingThoughtJump.id)) return
 
-    handleThoughtJump(pendingThoughtJump, 'pending')
+    let cancelled = false
+    let timeoutId: number | null = null
+    let attempts = 0
+    const maxAttempts = 8
+
+    const tryPendingJump = () => {
+      if (cancelled) return
+
+      if (handleThoughtJump(pendingThoughtJump, 'pending')) return
+      attempts += 1
+      if (attempts >= maxAttempts) {
+        handleThoughtJump(pendingThoughtJump, 'event')
+        return
+      }
+
+      timeoutId = window.setTimeout(tryPendingJump, 50)
+    }
+
+    tryPendingJump()
+    return () => {
+      cancelled = true
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId)
+      }
+    }
   }, [handleThoughtJump, pendingThoughtJump, thoughts])
 
   useEffect(() => {
