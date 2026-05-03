@@ -381,6 +381,15 @@ async function installFixtureVaultInitScript({ page, vaultPath, isGitRepo }: Fix
           }),
         })
       },
+      capture_url: (commandArgs?: FixtureCommandArgs) =>
+        readJson('/api/vault/capture-url', {
+          method: 'POST',
+          headers: jsonHeaders,
+          body: JSON.stringify({
+            vault_path: readCommandValue(commandArgs, 'vaultPath', resolvedVaultPath),
+            url: readCommandValue(commandArgs, 'url'),
+          }),
+        }),
       update_frontmatter: (commandArgs?: FixtureCommandArgs) =>
         persistFrontmatterChange(readCommandString(commandArgs, 'path'), (content) =>
           replaceFrontmatterEntry(

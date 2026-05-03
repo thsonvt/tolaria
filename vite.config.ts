@@ -384,6 +384,123 @@ async function handleVaultSave(url: URL, req: IncomingMessage, res: ServerRespon
   return true
 }
 
+const CAPTURE_MAX_BYTES = 5 * 1024 * 1024
+
+function captureSlug(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+function captureTitle(html: string, fallbackUrl: string): string {
+  const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1]
+  const title = h1 ?? html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]
+  return stripHtml(title ?? new URL(fallbackUrl).hostname).trim()
+}
+
+function captureBodyMarkdown(html: string): string {
+  const article = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i)?.[1]
+    ?? html.match(/<main[^>]*>([\s\S]*?)<\/main>/i)?.[1]
+    ?? html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1]
+    ?? html
+  const paragraphs = Array.from(article.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi))
+    .map((match) => stripHtml(match[1]).trim())
+    .filter(Boolean)
+  return paragraphs.length > 0 ? paragraphs.join('\n\n') : stripHtml(article).trim()
+}
+
+function stripHtml(value: string): string {
+  return value
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+}
+
+function renderCaptureNote(title: string, sourceUrl: string, bodyMarkdown: string): { filename: string; content: string } {
+  const now = new Date()
+  const capturedAt = now.toISOString().replace(/\.\d{3}Z$/, 'Z')
+  const slug = captureSlug(title) || `capture-${capturedAt.replace(/[-:T]/g, '').replace('Z', '')}`
+  const filename = `${slug}.md`
+  const content = [
+    '---',
+    'type: Capture',
+    'source: web',
+    `url: ${sourceUrl}`,
+    `title: ${title}`,
+    `captured_at: ${capturedAt}`,
+    '---',
+    '',
+    `# ${title}`,
+    '',
+    bodyMarkdown,
+    '',
+  ].join('\n')
+  return { filename, content }
+}
+
+async function fetchCaptureHtml(rawUrl: string): Promise<{ finalUrl: string; html: string }> {
+  const parsed = new URL(rawUrl.trim())
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('URL must be http or https')
+  }
+
+  const response = await fetch(parsed)
+  if (!response.ok) {
+    throw new Error(`non-success status: ${response.status}`)
+  }
+  const contentType = response.headers.get('content-type') ?? ''
+  if (!contentType.includes('html')) {
+    throw new Error(`response is not html: ${contentType}`)
+  }
+  const declaredLength = Number(response.headers.get('content-length') ?? 0)
+  if (declaredLength > CAPTURE_MAX_BYTES) {
+    throw new Error('response too large (over 5 MiB)')
+  }
+  const html = await response.text()
+  if (Buffer.byteLength(html) > CAPTURE_MAX_BYTES) {
+    throw new Error('response too large (over 5 MiB)')
+  }
+  return { finalUrl: response.url || parsed.toString(), html }
+}
+
+async function handleVaultCaptureUrl(url: URL, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+  if (url.pathname !== '/api/vault/capture-url' || req.method !== 'POST') return false
+  try {
+    const body = await readRequestBody(req)
+    const { vault_path: vaultPath, url: rawUrl } = JSON.parse(body)
+    if (!vaultPath || !fs.existsSync(vaultPath) || !rawUrl) {
+      sendJson(res, { error: 'Missing vault path or URL' }, 400)
+      return true
+    }
+
+    const fetched = await fetchCaptureHtml(String(rawUrl))
+    const title = captureTitle(fetched.html, fetched.finalUrl)
+    const bodyMarkdown = captureBodyMarkdown(fetched.html)
+    if (!bodyMarkdown) {
+      sendJson(res, { error: 'article body is empty' }, 422)
+      return true
+    }
+
+    const note = renderCaptureNote(title, fetched.finalUrl, bodyMarkdown)
+    const target = path.join(vaultPath, note.filename)
+    if (fs.existsSync(target)) {
+      sendJson(res, { error: `note already exists at ${target}` }, 409)
+      return true
+    }
+    fs.writeFileSync(target, note.content, 'utf-8')
+    sendJson(res, target)
+  } catch (err: unknown) {
+    sendJson(res, { error: err instanceof Error ? err.message : 'Capture failed' }, 500)
+  }
+  return true
+}
+
 async function handleVaultRename(url: URL, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   if (url.pathname !== '/api/vault/rename' || req.method !== 'POST') return false
   try {
@@ -480,6 +597,7 @@ async function handleVaultApiRequest(req: IncomingMessage, res: ServerResponse):
     () => Promise.resolve(handleVaultEntry(url, res)),
     () => Promise.resolve(handleVaultSearch(url, res)),
     () => handleVaultSave(url, req, res),
+    () => handleVaultCaptureUrl(url, req, res),
     () => handleVaultRename(url, req, res),
     () => handleVaultRenameFilename(url, req, res),
     () => handleVaultDelete(url, req, res),

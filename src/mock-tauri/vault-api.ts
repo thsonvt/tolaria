@@ -50,6 +50,8 @@ const VAULT_API_COMMANDS: Record<string, (args: Record<string, unknown>) => Vaul
     args.path ? { url: `/api/vault/all-content?path=${encodeURIComponent(args.path as string)}` } : null,
   save_note_content: (args) =>
     args.path ? { url: '/api/vault/save', method: 'POST', body: { path: args.path, content: args.content } } : null,
+  capture_url: (args) =>
+    args.url ? { url: '/api/vault/capture-url', method: 'POST', body: { vault_path: args.vaultPath, url: args.url } } : null,
   rename_note: (args) =>
     args.old_path ? { url: '/api/vault/rename', method: 'POST', body: { vault_path: args.vault_path, old_path: args.old_path, new_title: args.new_title } } : null,
   rename_note_filename: (args) =>
