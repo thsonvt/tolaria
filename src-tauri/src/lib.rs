@@ -1,5 +1,6 @@
 pub mod ai_agents;
 pub mod app_updater;
+pub mod capture;
 pub mod claude_cli;
 mod cli_agent_runtime;
 pub mod codex_cli;
