@@ -42,5 +42,8 @@ tempfile = "3"
 sha2 = "0.10"
 bincode = { version = "2", features = ["serde"] }
 fastembed = "5"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "brotli", "deflate"] }
+readability = "0.3"
+htmd = "0.2"
 
 [dev-dependencies]
