@@ -16,6 +16,8 @@ const CAPTURE_PARAGRAPH = 'Capture from URL stores a readable article body in th
 const CAPTURE_SECTION = 'Background'
 const CAPTURE_IMAGE_URL = 'https://example.com/capture-diagram.png'
 const CAPTURE_IMAGE_ALT = 'Capture architecture diagram'
+const CAPTURE_SOURCE_TITLE = 'What is Progressive Disclosure?'
+const CAPTURE_SOURCE_URL = 'https://example.com/progressive-disclosure'
 
 let tempVaultDir: string
 let articleServer: Server | null = null
@@ -40,6 +42,10 @@ async function startArticleServer(): Promise<string> {
               </figure>
               <h1 class="header-anchor-post">${CAPTURE_SECTION}</h1>
               <p>The smoke covers the dialog, dev vault API, file write, and reload path.</p>
+              <h2>Sources &amp; Further Reading</h2>
+              <ul>
+                <li><a href="${CAPTURE_SOURCE_URL}">${CAPTURE_SOURCE_TITLE}</a> - Example Source</li>
+              </ul>
             </article>
           </body>
         </html>`)
@@ -101,4 +107,6 @@ test('paste URL creates and opens a Capture note @smoke', async ({ page }) => {
   expect(content).toContain(CAPTURE_PARAGRAPH)
   expect(content).toContain(`![${CAPTURE_IMAGE_ALT}](${CAPTURE_IMAGE_URL})`)
   expect(content).toContain(`## ${CAPTURE_SECTION}`)
+  expect(content).toContain(`## Sources & Further Reading`)
+  expect(content).toContain(`* [${CAPTURE_SOURCE_TITLE}](${CAPTURE_SOURCE_URL}) - Example Source`)
 })

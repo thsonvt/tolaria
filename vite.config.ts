@@ -404,7 +404,7 @@ function captureBodyMarkdown(html: string): string {
     ?? html.match(/<main[^>]*>([\s\S]*?)<\/main>/i)?.[1]
     ?? html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1]
     ?? html
-  const blocks = Array.from(article.matchAll(/<(h[1-6]|p)\b([^>]*)>([\s\S]*?)<\/\1>|<img\b([^>]*)\/?>/gi))
+  const blocks = Array.from(article.matchAll(/<(h[1-6]|p|li)\b([^>]*)>([\s\S]*?)<\/\1>|<img\b([^>]*)\/?>/gi))
     .map((match) => captureBlockMarkdown(match))
     .filter(Boolean)
   return blocks.length > 0 ? blocks.join('\n\n') : stripHtml(article).trim()
@@ -422,7 +422,11 @@ function captureBlockMarkdown(match: RegExpMatchArray): string {
     return `${'#'.repeat(level)} ${text}`
   }
   if (tag === 'p') {
-    return stripHtml(match[3] ?? '').trim()
+    return markdownInline(match[3] ?? '').trim()
+  }
+  if (tag === 'li') {
+    const text = markdownInline(match[3] ?? '').trim()
+    return text ? `* ${text}` : ''
   }
 
   const imgAttrs = match[4] ?? ''
@@ -436,6 +440,14 @@ function htmlAttr(attrs: string, name: string): string | null {
   const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const match = attrs.match(new RegExp(`\\b${escapedName}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'))
   return decodeHtml(match?.[1] ?? match?.[2] ?? match?.[3] ?? '').trim() || null
+}
+
+function markdownInline(value: string): string {
+  return stripHtml(value.replace(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi, (_match, attrs: string, body: string) => {
+    const href = htmlAttr(attrs, 'href')
+    const text = stripHtml(body).trim()
+    return href && text ? `[${text}](${href})` : text
+  }))
 }
 
 function stripHtml(value: string): string {

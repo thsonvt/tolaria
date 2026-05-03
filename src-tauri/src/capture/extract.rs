@@ -26,6 +26,7 @@ pub fn extract(html: &str, base_url: &str) -> Result<ExtractedArticle, ExtractEr
     let normalized_html = normalize_before_readability(html);
     let product = run_readability(&normalized_html, &url)?;
     let body_markdown = to_markdown(&product.content)?;
+    let body_markdown = restore_preserved_link_sections(&body_markdown, html, &url);
     let trimmed = body_markdown.trim().to_string();
     if trimmed.is_empty() {
         return Err(ExtractError::Empty);
@@ -174,6 +175,157 @@ fn escape_html_text(input: &str) -> String {
         .replace('>', "&gt;")
 }
 
+#[derive(Debug, Clone)]
+struct PreservedLinkSection {
+    level: usize,
+    heading: String,
+    items: Vec<PreservedLinkItem>,
+}
+
+#[derive(Debug, Clone)]
+struct PreservedLinkItem {
+    title: String,
+    url: String,
+    suffix: String,
+}
+
+fn restore_preserved_link_sections(markdown: &str, html: &str, base_url: &Url) -> String {
+    let sections = preserved_link_sections(html, base_url);
+    if sections.is_empty() {
+        return markdown.to_string();
+    }
+
+    let mut restored = markdown.to_string();
+    for section in sections {
+        if section
+            .items
+            .iter()
+            .any(|item| restored.contains(&item.url))
+        {
+            continue;
+        }
+        restored = insert_link_section_items(restored, &section);
+    }
+    restored
+}
+
+fn insert_link_section_items(markdown: String, section: &PreservedLinkSection) -> String {
+    let heading_line = format!("{} {}", "#".repeat(section.level), section.heading);
+    let list_markdown = section
+        .items
+        .iter()
+        .map(|item| {
+            let suffix = item.suffix.trim();
+            if suffix.is_empty() {
+                format!("* [{}]({})", item.title, item.url)
+            } else {
+                format!("* [{}]({}) {}", item.title, item.url, suffix)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    if let Some(heading_start) = markdown.find(&heading_line) {
+        let insert_at = markdown[heading_start..]
+            .find('\n')
+            .map(|offset| heading_start + offset + 1)
+            .unwrap_or(markdown.len());
+        let mut out = String::with_capacity(markdown.len() + list_markdown.len() + 4);
+        out.push_str(markdown[..insert_at].trim_end());
+        out.push_str("\n\n");
+        out.push_str(&list_markdown);
+        out.push_str("\n\n");
+        out.push_str(markdown[insert_at..].trim_start());
+        out
+    } else {
+        let mut out = markdown.trim_end().to_string();
+        out.push_str("\n\n");
+        out.push_str(&heading_line);
+        out.push_str("\n\n");
+        out.push_str(&list_markdown);
+        out
+    }
+}
+
+fn preserved_link_sections(html: &str, base_url: &Url) -> Vec<PreservedLinkSection> {
+    let Ok(heading_re) = Regex::new(r"(?is)<h([1-6])\b[^>]*>(.*?)</h[1-6]>") else {
+        return Vec::new();
+    };
+    let mut sections = Vec::new();
+    for caps in heading_re.captures_iter(html) {
+        let Some(full_heading) = caps.get(0) else {
+            continue;
+        };
+        let level = caps
+            .get(1)
+            .and_then(|m| m.as_str().parse::<usize>().ok())
+            .unwrap_or(2)
+            .max(2);
+        let heading = caps
+            .get(2)
+            .map(|m| plain_text(m.as_str()))
+            .unwrap_or_default();
+        if !is_preservable_link_section_heading(&heading) {
+            continue;
+        }
+        let after_heading = &html[full_heading.end()..];
+        let section_end = next_heading_offset(after_heading).unwrap_or(after_heading.len());
+        let section_html = &after_heading[..section_end];
+        let items = preserved_link_items(section_html, base_url);
+        if !items.is_empty() {
+            sections.push(PreservedLinkSection {
+                level,
+                heading,
+                items,
+            });
+        }
+    }
+    sections
+}
+
+fn is_preservable_link_section_heading(heading: &str) -> bool {
+    let lower = heading.to_lowercase();
+    lower.contains("sources")
+        || lower.contains("further reading")
+        || lower.contains("references")
+        || lower.contains("resources")
+}
+
+fn next_heading_offset(html: &str) -> Option<usize> {
+    let re = Regex::new(r"(?is)<h[1-6]\b").ok()?;
+    re.find(html).map(|m| m.start())
+}
+
+fn preserved_link_items(html: &str, base_url: &Url) -> Vec<PreservedLinkItem> {
+    let Ok(item_re) = Regex::new(r"(?is)<li\b[^>]*>(.*?)</li>") else {
+        return Vec::new();
+    };
+    item_re
+        .captures_iter(html)
+        .filter_map(|caps| {
+            caps.get(1)
+                .and_then(|m| preserved_link_item(m.as_str(), base_url))
+        })
+        .collect()
+}
+
+fn preserved_link_item(html: &str, base_url: &Url) -> Option<PreservedLinkItem> {
+    let link_re = Regex::new(r#"(?is)<a\b([^>]*)>(.*?)</a>"#).ok()?;
+    let caps = link_re.captures(html)?;
+    let link_match = caps.get(0)?;
+    let href = html_attr(caps.get(1)?.as_str(), "href")?;
+    let url = base_url.join(&href).ok()?.to_string();
+    let title = caps
+        .get(2)
+        .map(|m| plain_text(m.as_str()))
+        .unwrap_or_default();
+    if title.is_empty() {
+        return None;
+    }
+    let suffix = plain_text(&html[link_match.end()..]);
+    Some(PreservedLinkItem { title, url, suffix })
+}
+
 fn extract_byline(html: &str) -> Option<String> {
     let re = Regex::new(r#"(?i)<meta\s+name=["']author["']\s+content=["']([^"']+)["']"#).ok()?;
     re.captures(html)
@@ -256,6 +408,57 @@ mod tests {
             "![Inside Claude Code architecture diagram](https://cdn.example.com/image.png)"
         ));
         assert!(article.body_markdown.contains("## Background"));
+    }
+
+    #[test]
+    fn preserves_sources_and_further_reading_links() {
+        let html = r#"
+            <html>
+              <body>
+                <article>
+                  <h1>Why AI Agents Need Progressive Disclosure</h1>
+                  <p>Progressive disclosure is ultimately about respect for the limits of attention.</p>
+                  <p>The most capable AI systems know what to know, and when to know it.</p>
+                  <h2>Sources &amp; Further Reading</h2>
+                  <ul>
+                    <li>
+                      <a href="https://www.interaction-design.org/literature/topics/progressive-disclosure">
+                        What is Progressive Disclosure?
+                      </a>
+                      - Interaction Design Foundation
+                    </li>
+                    <li>
+                      <a href="https://www.redhat.com/en/blog/tool-rag-scalable-ai-agents">
+                        Tool RAG: The Next Breakthrough in Scalable AI Agents
+                      </a>
+                      - Red Hat Emerging Technologies
+                    </li>
+                    <li>
+                      <a href="https://weaviate.io/blog/context-engineering-agentic-rag">
+                        Context Engineering for AI Agents
+                      </a>
+                      - Weaviate
+                    </li>
+                  </ul>
+                </article>
+              </body>
+            </html>
+        "#;
+
+        let article = extract(html, "https://honra.io/articles/progressive-disclosure").unwrap();
+
+        assert!(article
+            .body_markdown
+            .contains("## Sources & Further Reading"));
+        assert!(article.body_markdown.contains(
+            "[What is Progressive Disclosure?](https://www.interaction-design.org/literature/topics/progressive-disclosure)"
+        ));
+        assert!(article.body_markdown.contains(
+            "[Tool RAG: The Next Breakthrough in Scalable AI Agents](https://www.redhat.com/en/blog/tool-rag-scalable-ai-agents)"
+        ));
+        assert!(article.body_markdown.contains(
+            "[Context Engineering for AI Agents](https://weaviate.io/blog/context-engineering-agentic-rag)"
+        ));
     }
 
     #[test]
