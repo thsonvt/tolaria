@@ -1179,7 +1179,6 @@ export function SingleEditorView({ editor, entries, activeNotePath, activeMarkdo
             setThoughtPopoverAnchor(null)
             setDraftThought(null)
             setOpenThought(null)
-            restoreThoughtFocus()
           }
         }}
         onCloseAutoFocus={restoreThoughtFocus}

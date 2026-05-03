@@ -914,6 +914,7 @@ describe('SingleEditorView', () => {
   })
 
   it('restores focus to the invoking pin when the thought popover closes', async () => {
+    const editor = createEditor()
     const thought = makeSelectionThought({
       quote: 'matched passage',
       prefix: 'A ',
@@ -924,7 +925,7 @@ describe('SingleEditorView', () => {
 
     render(
       <SingleEditorView
-        editor={createEditor() as never}
+        editor={editor as never}
         entries={[makeEntry()]}
         onNavigateWikilink={vi.fn()}
         activeNotePath="/vault/project/alpha.md"
@@ -944,6 +945,7 @@ describe('SingleEditorView', () => {
       expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument()
     })
     expect(document.activeElement).toBe(pinButton)
+    expect(editor.focus).not.toHaveBeenCalled()
   })
 
   it('uses the matched anchor offset to jump to the intended duplicate quote block once', async () => {
