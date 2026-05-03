@@ -12,7 +12,9 @@ import { triggerMenuCommand } from './testBridge'
 
 const CAPTURE_TITLE = 'Test Capture Article'
 const CAPTURE_FILENAME = 'test-capture-article.md'
+const CAPTURE_DESCRIPTION = 'A captured article subtitle should stay visible at the top of the note.'
 const CAPTURE_PARAGRAPH = 'Capture from URL stores a readable article body in the active vault.'
+const CAPTURE_HERO_IMAGE_URL = 'https://example.com/capture-hero.png'
 const CAPTURE_SECTION = 'Background'
 const CAPTURE_IMAGE_URL = 'https://example.com/capture-diagram.png'
 const CAPTURE_IMAGE_ALT = 'Capture architecture diagram'
@@ -29,7 +31,11 @@ async function startArticleServer(): Promise<string> {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
       res.end(`<!doctype html>
         <html>
-          <head><title>${CAPTURE_TITLE}</title></head>
+          <head>
+            <title>${CAPTURE_TITLE}</title>
+            <meta name="description" content="${CAPTURE_DESCRIPTION}" />
+            <meta property="og:image" content="${CAPTURE_HERO_IMAGE_URL}" />
+          </head>
           <body>
             <article>
               <h1>${CAPTURE_TITLE}</h1>
@@ -104,6 +110,10 @@ test('paste URL creates and opens a Capture note @smoke', async ({ page }) => {
   expect(content).toContain('type: Capture')
   expect(content).toContain('source: web')
   expect(content).toContain(`url: ${articleUrl}`)
+  expect(content).toContain(`description: ${CAPTURE_DESCRIPTION}`)
+  expect(content).toContain(`image: ${CAPTURE_HERO_IMAGE_URL}`)
+  expect(content).toContain(`> ${CAPTURE_DESCRIPTION}`)
+  expect(content).toContain(`![${CAPTURE_TITLE} hero image](${CAPTURE_HERO_IMAGE_URL})`)
   expect(content).toContain(CAPTURE_PARAGRAPH)
   expect(content).toContain(`![${CAPTURE_IMAGE_ALT}](${CAPTURE_IMAGE_URL})`)
   expect(content).toContain(`## ${CAPTURE_SECTION}`)

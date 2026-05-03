@@ -187,7 +187,7 @@ flowchart TD
 
 ### Capture from URL
 
-Phase 0 second-brain capture is implemented as a native ingestion pipeline, not a renderer-only shortcut. The `capture_url` command accepts a URL plus the active vault path, validates that the URL is HTTP(S), fetches HTML with a 5 MiB cap and HTML content-type guard, extracts title/byline/body markdown, renders a `type: Capture` note with `source`, `url`, `title`, and `captured_at` frontmatter, writes it to the vault root, then returns the absolute note path.
+Phase 0 second-brain capture is implemented as a native ingestion pipeline, not a renderer-only shortcut. The `capture_url` command accepts a URL plus the active vault path, validates that the URL is HTTP(S), fetches HTML with a 5 MiB cap and HTML content-type guard, extracts title/byline/description/hero-image/body markdown, renders a `type: Capture` note with `source`, `url`, `title`, optional `description` and `image`, and `captured_at` frontmatter, writes it to the vault root, then returns the absolute note path. The rendered body repeats the description as a blockquote subtitle and the hero image beneath the H1 so captured article headers remain visible in the editor.
 
 The React surface is deliberately thin: `CaptureFromUrlDialog` collects the URL, `useCaptureFromUrl` invokes `capture_url`, and `App` feeds the returned path through `handleAgentFileCreated()` so the note list reloads and the new note opens like any externally-created Markdown file. The menu/command-palette action is `file-capture-url` and uses `Cmd/Ctrl+Shift+U`; `Cmd/Ctrl+Shift+L` remains reserved for the AI panel.
 

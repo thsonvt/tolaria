@@ -8,6 +8,8 @@ use url::Url;
 pub struct ExtractedArticle {
     pub title: String,
     pub byline: Option<String>,
+    pub description: Option<String>,
+    pub hero_image: Option<String>,
     pub body_markdown: String,
 }
 
@@ -34,6 +36,8 @@ pub fn extract(html: &str, base_url: &str) -> Result<ExtractedArticle, ExtractEr
     Ok(ExtractedArticle {
         title: product.title,
         byline: extract_byline(html),
+        description: extract_description(html),
+        hero_image: extract_hero_image(html, &url),
         body_markdown: trimmed,
     })
 }
@@ -326,6 +330,59 @@ fn preserved_link_item(html: &str, base_url: &Url) -> Option<PreservedLinkItem> 
     Some(PreservedLinkItem { title, url, suffix })
 }
 
+fn extract_description(html: &str) -> Option<String> {
+    first_meta_content(
+        html,
+        &[
+            ("name", "description"),
+            ("property", "og:description"),
+            ("name", "twitter:description"),
+            ("property", "twitter:description"),
+        ],
+    )
+}
+
+fn extract_hero_image(html: &str, base_url: &Url) -> Option<String> {
+    first_meta_content(
+        html,
+        &[
+            ("property", "og:image"),
+            ("property", "og:image:url"),
+            ("name", "twitter:image"),
+            ("name", "twitter:image:src"),
+            ("property", "twitter:image"),
+            ("property", "twitter:image:src"),
+        ],
+    )
+    .and_then(|image| absolute_url(base_url, &image))
+}
+
+fn first_meta_content(html: &str, selectors: &[(&str, &str)]) -> Option<String> {
+    selectors
+        .iter()
+        .find_map(|(name, value)| meta_content(html, name, value))
+}
+
+fn meta_content(html: &str, name: &str, value: &str) -> Option<String> {
+    let meta_re = Regex::new(r"(?is)<meta\b[^>]*>").ok()?;
+    for tag in meta_re.find_iter(html).map(|m| m.as_str()) {
+        if meta_attr_matches(tag, name, value) {
+            return html_attr(tag, "content");
+        }
+    }
+    None
+}
+
+fn meta_attr_matches(tag: &str, name: &str, expected: &str) -> bool {
+    html_attr(tag, name)
+        .as_deref()
+        .is_some_and(|actual| actual.eq_ignore_ascii_case(expected))
+}
+
+fn absolute_url(base_url: &Url, value: &str) -> Option<String> {
+    base_url.join(value.trim()).ok().map(|url| url.to_string())
+}
+
 fn extract_byline(html: &str) -> Option<String> {
     let re = Regex::new(r#"(?i)<meta\s+name=["']author["']\s+content=["']([^"']+)["']"#).ok()?;
     re.captures(html)
@@ -358,6 +415,40 @@ mod tests {
         let html = fixture("article-medium.html");
         let article = extract(&html, "https://medium.com/@author/post").unwrap();
         assert_eq!(article.byline.as_deref(), Some("Jane Doe"));
+    }
+
+    #[test]
+    fn captures_article_description_and_hero_image_metadata() {
+        let html = r#"
+            <html>
+              <head>
+                <title>Progressive Disclosure for AI Agents</title>
+                <meta
+                  name="description"
+                  content="How agents can reveal context and tools only when they matter."
+                />
+                <meta property="og:image" content="/images/agent-disclosure.png" />
+              </head>
+              <body>
+                <article>
+                  <h1>Progressive Disclosure for AI Agents</h1>
+                  <p>Progressive disclosure helps agents avoid overwhelming users.</p>
+                </article>
+              </body>
+            </html>
+        "#;
+
+        let article =
+            extract(html, "https://www.honra.io/articles/progressive-disclosure").unwrap();
+
+        assert_eq!(
+            article.description.as_deref(),
+            Some("How agents can reveal context and tools only when they matter.")
+        );
+        assert_eq!(
+            article.hero_image.as_deref(),
+            Some("https://www.honra.io/images/agent-disclosure.png")
+        );
     }
 
     #[test]

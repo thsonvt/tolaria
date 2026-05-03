@@ -386,6 +386,11 @@ async function handleVaultSave(url: URL, req: IncomingMessage, res: ServerRespon
 
 const CAPTURE_MAX_BYTES = 5 * 1024 * 1024
 
+interface CaptureMetadata {
+  description?: string
+  heroImage?: string
+}
+
 function captureSlug(title: string): string {
   return title
     .toLowerCase()
@@ -397,6 +402,53 @@ function captureTitle(html: string, fallbackUrl: string): string {
   const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1]
   const title = h1 ?? html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]
   return stripHtml(title ?? new URL(fallbackUrl).hostname).trim()
+}
+
+function captureMetadata(html: string, finalUrl: string): CaptureMetadata {
+  const heroImage = firstMetaContent(html, [
+    ['property', 'og:image'],
+    ['property', 'og:image:url'],
+    ['name', 'twitter:image'],
+    ['name', 'twitter:image:src'],
+    ['property', 'twitter:image'],
+    ['property', 'twitter:image:src'],
+  ])
+  return {
+    description: firstMetaContent(html, [
+      ['name', 'description'],
+      ['property', 'og:description'],
+      ['name', 'twitter:description'],
+      ['property', 'twitter:description'],
+    ]),
+    heroImage: heroImage ? absoluteCaptureUrl(heroImage, finalUrl) : undefined,
+  }
+}
+
+function firstMetaContent(html: string, selectors: Array<[string, string]>): string | undefined {
+  for (const [name, value] of selectors) {
+    const content = metaContent(html, name, value)
+    if (content) return content
+  }
+  return undefined
+}
+
+function metaContent(html: string, name: string, expected: string): string | undefined {
+  const tags = html.match(/<meta\b[^>]*>/gi) ?? []
+  for (const tag of tags) {
+    const actual = htmlAttr(tag, name)
+    if (actual?.toLowerCase() === expected.toLowerCase()) {
+      return htmlAttr(tag, 'content') ?? undefined
+    }
+  }
+  return undefined
+}
+
+function absoluteCaptureUrl(value: string, baseUrl: string): string | undefined {
+  try {
+    return new URL(value.trim(), baseUrl).toString()
+  } catch {
+    return undefined
+  }
 }
 
 function captureBodyMarkdown(html: string): string {
@@ -470,22 +522,36 @@ function decodeHtml(value: string): string {
     .replace(/&#39;/g, "'")
 }
 
-function renderCaptureNote(title: string, sourceUrl: string, bodyMarkdown: string): { filename: string; content: string } {
+function renderCaptureNote(
+  title: string,
+  sourceUrl: string,
+  bodyMarkdown: string,
+  metadata: CaptureMetadata,
+): { filename: string; content: string } {
   const now = new Date()
   const capturedAt = now.toISOString().replace(/\.\d{3}Z$/, 'Z')
   const slug = captureSlug(title) || `capture-${capturedAt.replace(/[-:T]/g, '').replace('Z', '')}`
   const filename = `${slug}.md`
-  const content = [
+  const frontmatter = [
     '---',
     'type: Capture',
     'source: web',
     `url: ${sourceUrl}`,
     `title: ${title}`,
+    metadata.description ? `description: ${metadata.description}` : '',
+    metadata.heroImage ? `image: ${metadata.heroImage}` : '',
     `captured_at: ${capturedAt}`,
     '---',
-    '',
+  ].filter(Boolean)
+  const header = [
     `# ${title}`,
+    metadata.description ? `> ${metadata.description}` : '',
+    metadata.heroImage ? `![${title} hero image](${metadata.heroImage})` : '',
+  ].filter(Boolean)
+  const content = [
+    ...frontmatter,
     '',
+    ...header,
     bodyMarkdown,
     '',
   ].join('\n')
@@ -529,13 +595,14 @@ async function handleVaultCaptureUrl(url: URL, req: IncomingMessage, res: Server
 
     const fetched = await fetchCaptureHtml(String(rawUrl))
     const title = captureTitle(fetched.html, fetched.finalUrl)
+    const metadata = captureMetadata(fetched.html, fetched.finalUrl)
     const bodyMarkdown = captureBodyMarkdown(fetched.html)
     if (!bodyMarkdown) {
       sendJson(res, { error: 'article body is empty' }, 422)
       return true
     }
 
-    const note = renderCaptureNote(title, fetched.finalUrl, bodyMarkdown)
+    const note = renderCaptureNote(title, fetched.finalUrl, bodyMarkdown, metadata)
     const target = path.join(vaultPath, note.filename)
     if (fs.existsSync(target)) {
       sendJson(res, { error: `note already exists at ${target}` }, 409)

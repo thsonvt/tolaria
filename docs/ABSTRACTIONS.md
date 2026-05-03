@@ -74,11 +74,13 @@ type: Capture
 source: web
 url: https://example.com/article
 title: Example Article
+description: Example subtitle from page metadata
+image: https://example.com/hero.png
 captured_at: 2026-05-03T22:14:00Z
 ---
 ```
 
-`capture_url` is a Tauri command that validates an HTTP(S) URL, fetches HTML with content-type and size guards, extracts a readable article, renders frontmatter/body Markdown, writes the note to disk, then returns the absolute note path. The frontend `Capture from URL` command and dialog call that command through `useCaptureFromUrl`; on success, the app reloads and opens the created note through the same file-created path used by agent-authored notes.
+`capture_url` is a Tauri command that validates an HTTP(S) URL, fetches HTML with content-type and size guards, extracts a readable article, preserves standard description and hero-image metadata when present, renders frontmatter/body Markdown, writes the note to disk, then returns the absolute note path. The frontend `Capture from URL` command and dialog call that command through `useCaptureFromUrl`; on success, the app reloads and opens the created note through the same file-created path used by agent-authored notes.
 
 Browser Playwright runs do not have native Tauri IPC, so the dev vault API mirrors this command at `POST /api/vault/capture-url`. That endpoint exists only to keep smoke tests and browser development on the same vault-write contract as the native app.
 

@@ -56,12 +56,24 @@ fn contents_for(
     if let Some(author) = clean_author(article) {
         out.push_str(&format!("author: {}\n", author));
     }
+    if let Some(description) = clean_description(article) {
+        out.push_str(&format!("description: {}\n", description));
+    }
+    if let Some(hero_image) = clean_hero_image(article) {
+        out.push_str(&format!("image: {}\n", hero_image));
+    }
     out.push_str(&format!(
         "captured_at: {}\n",
         captured_at.format("%Y-%m-%dT%H:%M:%SZ")
     ));
     out.push_str("---\n\n");
     out.push_str(&format!("# {}\n\n", title));
+    if let Some(description) = clean_description(article) {
+        out.push_str(&format!("> {}\n\n", description));
+    }
+    if let Some(hero_image) = clean_hero_image(article) {
+        out.push_str(&format!("![{} hero image]({})\n\n", title, hero_image));
+    }
     out.push_str(article.body_markdown.trim());
     out.push('\n');
     out
@@ -84,6 +96,22 @@ fn clean_author(article: &ExtractedArticle) -> Option<&str> {
         .filter(|author| !author.is_empty())
 }
 
+fn clean_description(article: &ExtractedArticle) -> Option<&str> {
+    article
+        .description
+        .as_deref()
+        .map(str::trim)
+        .filter(|description| !description.is_empty())
+}
+
+fn clean_hero_image(article: &ExtractedArticle) -> Option<&str> {
+    article
+        .hero_image
+        .as_deref()
+        .map(str::trim)
+        .filter(|image| !image.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,6 +121,8 @@ mod tests {
         ExtractedArticle {
             title: "How to Think About Knowledge".into(),
             byline: Some("Jane Doe".into()),
+            description: Some("A reflection on building a personal knowledge system.".into()),
+            hero_image: Some("https://example.com/knowledge-system.png".into()),
             body_markdown: "# Section One\n\nAn evergreen note is...".into(),
         }
     }
@@ -118,13 +148,25 @@ mod tests {
             .contents
             .contains("title: How to Think About Knowledge\n"));
         assert!(doc.contents.contains("author: Jane Doe\n"));
+        assert!(doc
+            .contents
+            .contains("description: A reflection on building a personal knowledge system.\n"));
+        assert!(doc
+            .contents
+            .contains("image: https://example.com/knowledge-system.png\n"));
         assert!(doc.contents.contains("captured_at: 2026-05-03T22:14:00Z\n"));
     }
 
     #[test]
-    fn renders_body_after_frontmatter() {
+    fn renders_metadata_header_before_body() {
         let doc = render(&sample(), "https://example.com/post", fixed_time());
         assert!(doc.contents.contains("# How to Think About Knowledge"));
+        assert!(doc
+            .contents
+            .contains("> A reflection on building a personal knowledge system."));
+        assert!(doc.contents.contains(
+            "![How to Think About Knowledge hero image](https://example.com/knowledge-system.png)"
+        ));
         assert!(doc.contents.contains("# Section One"));
     }
 
