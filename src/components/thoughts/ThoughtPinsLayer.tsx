@@ -9,7 +9,7 @@ import {
 interface ThoughtPinsLayerProps {
   thoughts: ThoughtRecord[]
   markdown: string
-  onOpenThought: (thought: ThoughtRecord) => void
+  onOpenThought: (thought: ThoughtRecord, anchorElement?: HTMLElement | null) => void
 }
 
 interface MatchedThoughtPin {
@@ -58,7 +58,7 @@ export function ThoughtPinsLayer({
           style={{ top: `${topOffset}px` }}
           onClick={(event) => {
             event.stopPropagation()
-            onOpenThought(thought)
+            onOpenThought(thought, event.currentTarget)
           }}
         >
           <ChatCenteredText weight="fill" />

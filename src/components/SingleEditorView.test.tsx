@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
 import type { VaultEntry } from '../types'
@@ -7,6 +7,9 @@ import {
   HIGHLIGHT_JUMP_EVENT,
   HIGHLIGHT_PULSE_CLASS,
 } from '../utils/highlightMarkdown'
+import {
+  ADD_THOUGHT_FROM_FORMATTING_TOOLBAR_EVENT,
+} from './tolariaEditorFormatting'
 
 const state = vi.hoisted(() => ({
   capturedLinkToolbarProps: null as null | Record<string, unknown>,
@@ -186,6 +189,7 @@ vi.mock('./tolariaEditorFormattingConfig', () => ({
 }))
 
 vi.mock('./tolariaEditorFormatting', () => ({
+  ADD_THOUGHT_FROM_FORMATTING_TOOLBAR_EVENT: 'tolaria:add-thought-from-formatting-toolbar',
   TolariaFormattingToolbar: () => <div data-testid="tolaria-formatting-toolbar" />,
   TolariaFormattingToolbarController: (props: Record<string, unknown>) => {
     state.capturedToolbarProps = props
@@ -313,6 +317,37 @@ function appendToolbarButton(container: Element, className: string, text: string
   toolbar.appendChild(button)
   container.appendChild(toolbar)
   return button
+}
+
+function makeSelectionThought(overrides: Partial<{
+  id: string
+  notePath: string
+  noteTitle: string
+  quote: string
+  prefix: string
+  suffix: string
+  startOffset: number
+  endOffset: number
+  bodyMarkdown: string
+  createdAt: string
+  updatedAt: string
+}> = {}) {
+  return {
+    id: overrides.id ?? 'thought-1',
+    notePath: overrides.notePath ?? '/vault/project/alpha.md',
+    noteTitle: overrides.noteTitle ?? 'Alpha',
+    anchor: {
+      type: 'selection' as const,
+      quote: overrides.quote ?? 'Repeated quote',
+      prefix: overrides.prefix ?? '',
+      suffix: overrides.suffix ?? '',
+      startOffset: overrides.startOffset ?? 0,
+      endOffset: overrides.endOffset ?? 14,
+    },
+    bodyMarkdown: overrides.bodyMarkdown ?? 'Thought body',
+    createdAt: overrides.createdAt ?? '2026-05-03T10:00:00.000Z',
+    updatedAt: overrides.updatedAt ?? '2026-05-03T10:00:00.000Z',
+  }
 }
 
 describe('SingleEditorView', () => {
@@ -876,5 +911,136 @@ describe('SingleEditorView', () => {
     })
 
     expect(targetMark).not.toHaveClass(HIGHLIGHT_PULSE_CLASS)
+  })
+
+  it('restores focus to the invoking pin when the thought popover closes', async () => {
+    const thought = makeSelectionThought({
+      quote: 'matched passage',
+      prefix: 'A ',
+      suffix: ' appears',
+      startOffset: 10,
+      endOffset: 24,
+    })
+
+    render(
+      <SingleEditorView
+        editor={createEditor() as never}
+        entries={[makeEntry()]}
+        onNavigateWikilink={vi.fn()}
+        activeNotePath="/vault/project/alpha.md"
+        activeMarkdown="# Title\n\nA matched passage appears in this article."
+        thoughts={[thought]}
+      />,
+    )
+
+    const pinButton = screen.getByRole('button', { name: 'Open thought' })
+    fireEvent.click(pinButton)
+
+    expect(await screen.findByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument()
+    })
+    expect(document.activeElement).toBe(pinButton)
+  })
+
+  it('uses the matched anchor offset to jump to the intended duplicate quote block once', async () => {
+    const editor = createEditor()
+    const onThoughtJumpHandled = vi.fn()
+    const duplicateQuote = 'Repeated quote'
+    const markdown = [
+      '# Alpha',
+      '',
+      `First ${duplicateQuote} end.`,
+      '',
+      `Second ${duplicateQuote} finish.`,
+    ].join('\n')
+    const thought = makeSelectionThought({
+      id: 'duplicate-thought',
+      quote: duplicateQuote,
+      prefix: '\n\nSecond ',
+      suffix: ' finish.',
+      startOffset: markdown.indexOf(`Second ${duplicateQuote}`) + 'Second '.length,
+      endOffset: markdown.indexOf(`Second ${duplicateQuote}`) + 'Second '.length + duplicateQuote.length,
+    })
+
+    const { rerender } = render(
+      <SingleEditorView
+        editor={editor as never}
+        entries={[makeEntry()]}
+        onNavigateWikilink={vi.fn()}
+        activeNotePath="/vault/project/alpha.md"
+        activeMarkdown={markdown}
+        thoughts={[thought]}
+        onThoughtJumpHandled={onThoughtJumpHandled}
+      />,
+    )
+
+    const container = screen.getByTestId('blocknote-view').closest('.editor__blocknote-container')
+    expect(container).toBeTruthy()
+
+    const firstBlock = document.createElement('div')
+    firstBlock.className = 'bn-block'
+    firstBlock.textContent = `First ${duplicateQuote} end.`
+    firstBlock.scrollIntoView = vi.fn()
+
+    const secondBlock = document.createElement('div')
+    secondBlock.className = 'bn-block'
+    secondBlock.textContent = `Second ${duplicateQuote} finish.`
+    secondBlock.scrollIntoView = vi.fn()
+
+    container?.append(firstBlock, secondBlock)
+
+    rerender(
+      <SingleEditorView
+        editor={editor as never}
+        entries={[makeEntry()]}
+        onNavigateWikilink={vi.fn()}
+        activeNotePath="/vault/project/alpha.md"
+        activeMarkdown={markdown}
+        thoughts={[thought]}
+        pendingThoughtJump={thought}
+        onThoughtJumpHandled={onThoughtJumpHandled}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(secondBlock.scrollIntoView).toHaveBeenCalledWith({
+        block: 'center',
+        behavior: 'smooth',
+      })
+    })
+    expect(firstBlock.scrollIntoView).not.toHaveBeenCalled()
+    expect(onThoughtJumpHandled).toHaveBeenCalledTimes(1)
+    expect(onThoughtJumpHandled).toHaveBeenCalledWith(thought.id)
+  })
+
+  it('opens a thought draft from the formatting toolbar event and restores editor focus on cancel', async () => {
+    const editor = createEditor()
+
+    render(
+      <SingleEditorView
+        editor={editor as never}
+        entries={[makeEntry()]}
+        onNavigateWikilink={vi.fn()}
+        activeNotePath="/vault/project/alpha.md"
+        activeMarkdown="# Alpha\n\nBody"
+      />,
+    )
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(ADD_THOUGHT_FROM_FORMATTING_TOOLBAR_EVENT))
+    })
+
+    expect(await screen.findByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument()
+    })
+    expect(editor.focus).toHaveBeenCalled()
   })
 })

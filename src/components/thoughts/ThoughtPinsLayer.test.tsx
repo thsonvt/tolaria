@@ -68,7 +68,10 @@ describe('ThoughtPinsLayer', () => {
 
     fireEvent.click(buttons[1] as HTMLButtonElement)
 
-    expect(onOpenThought).toHaveBeenCalledWith(duplicateThought)
+    expect(onOpenThought).toHaveBeenCalledWith(
+      duplicateThought,
+      expect.any(HTMLButtonElement),
+    )
     expect(onOpenThought).toHaveBeenCalledTimes(1)
     expect(onParentClick).not.toHaveBeenCalled()
   })

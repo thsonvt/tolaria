@@ -1,12 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import {
+  PopoverAnchor,
   Popover,
   PopoverContent,
   PopoverDescription,
   PopoverHeader,
   PopoverTitle,
-  PopoverTrigger,
 } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import type { ThoughtRecord } from '../../utils/thoughts'
@@ -16,10 +16,11 @@ interface ThoughtPopoverProps {
   anchorLabel: string
   thought?: ThoughtRecord | null
   initialBody?: string
-  trigger: ReactNode
+  anchor?: ReactNode
   onOpenChange: (open: boolean) => void
   onSave: (bodyMarkdown: string) => Promise<void>
   onDelete?: () => Promise<void>
+  onCloseAutoFocus?: () => void
 }
 
 export function ThoughtPopover({
@@ -27,10 +28,11 @@ export function ThoughtPopover({
   anchorLabel,
   thought,
   initialBody,
-  trigger,
+  anchor,
   onOpenChange,
   onSave,
   onDelete,
+  onCloseAutoFocus,
 }: ThoughtPopoverProps) {
   const [body, setBody] = useState('')
   const [saving, setSaving] = useState(false)
@@ -46,13 +48,21 @@ export function ThoughtPopover({
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent aria-label="Thought" className="w-80 space-y-3">
+      {anchor ? <PopoverAnchor asChild>{anchor}</PopoverAnchor> : null}
+      <PopoverContent
+        aria-label="Thought"
+        className="w-80 space-y-3"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault()
+          onCloseAutoFocus?.()
+        }}
+      >
         <PopoverHeader>
           <PopoverTitle>{thought ? 'Edit thought' : 'New thought'}</PopoverTitle>
           <PopoverDescription>{anchorLabel}</PopoverDescription>
         </PopoverHeader>
         <Textarea
+          autoFocus
           aria-label="Thought"
           placeholder="Write a thought"
           value={body}

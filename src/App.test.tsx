@@ -428,6 +428,7 @@ vi.mock('@blocknote/mantine', () => ({
 vi.mock('@blocknote/mantine/style.css', () => ({}))
 
 vi.mock('./components/tolariaEditorFormatting', () => ({
+  ADD_THOUGHT_FROM_FORMATTING_TOOLBAR_EVENT: 'tolaria:add-thought-from-formatting-toolbar',
   TolariaFormattingToolbar: () => null,
   TolariaFormattingToolbarController: () => null,
 }))

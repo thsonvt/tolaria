@@ -38,6 +38,7 @@ import {
   THOUGHT_PULSE_CLASS,
   createArticleThoughtDraft,
   createSelectionThoughtDraft,
+  matchThoughtAnchor,
   type ThoughtJumpEventDetail,
   type ThoughtRecord,
 } from '../utils/thoughts'
@@ -47,6 +48,7 @@ import { _wikilinkEntriesRef } from './editorSchema'
 import { useBlockNoteSideMenuHoverGuard } from './blockNoteSideMenuHoverGuard'
 import { getTolariaSlashMenuItems } from './tolariaEditorFormattingConfig'
 import {
+  ADD_THOUGHT_FROM_FORMATTING_TOOLBAR_EVENT,
   TolariaFormattingToolbar,
   TolariaFormattingToolbarController,
 } from './tolariaEditorFormatting'
@@ -91,7 +93,6 @@ const EDITOR_SHORTCUT_IGNORE_SELECTOR = [
   'select',
   'textarea',
 ].join(', ')
-const ADD_THOUGHT_FROM_FORMATTING_TOOLBAR_EVENT = 'tolaria:add-thought-from-formatting-toolbar'
 const THOUGHT_PULSE_DURATION_MS = 1400
 
 type TestTableBlock = {
@@ -100,8 +101,16 @@ type TestTableBlock = {
 }
 type SuggestionAction = () => void
 type SuggestionItemWithClick = { onItemClick?: SuggestionAction }
+interface ThoughtPopoverAnchorPoint {
+  top: number
+  left: number
+}
 
 function normalizeThoughtSelectionText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function normalizeThoughtOffsetText(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
 }
 
@@ -328,6 +337,117 @@ function getSelectedTextInsideElement(element: HTMLElement): string {
 
 function resolveThoughtScrollContainer(container: HTMLElement): HTMLElement {
   return container.closest<HTMLElement>('.editor-scroll-area') ?? container
+}
+
+function thoughtAnchorPointFromRect(
+  container: HTMLElement,
+  rect: DOMRect,
+): ThoughtPopoverAnchorPoint | null {
+  if (!(rect.width || rect.height)) return null
+
+  const containerRect = container.getBoundingClientRect()
+  const maxLeft = Math.max(container.clientWidth - 12, 12)
+  return {
+    top: Math.max(rect.top - containerRect.top + rect.height / 2, 12),
+    left: Math.min(Math.max(rect.left - containerRect.left + rect.width / 2, 12), maxLeft),
+  }
+}
+
+function resolveSelectionThoughtAnchorPoint(
+  container: HTMLElement,
+): ThoughtPopoverAnchorPoint | null {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) return null
+
+  const range = selection.getRangeAt(0)
+  if (!rangeBelongsToElement(range, container)) return null
+
+  return thoughtAnchorPointFromRect(container, range.getBoundingClientRect())
+}
+
+function resolveThoughtPopoverAnchorPoint(options: {
+  container: HTMLElement
+  anchorElement?: HTMLElement | null
+}): ThoughtPopoverAnchorPoint {
+  const { container, anchorElement } = options
+
+  if (anchorElement?.isConnected) {
+    const anchorPoint = thoughtAnchorPointFromRect(
+      container,
+      anchorElement.getBoundingClientRect(),
+    )
+    if (anchorPoint) return anchorPoint
+  }
+
+  const selectionPoint = resolveSelectionThoughtAnchorPoint(container)
+  if (selectionPoint) return selectionPoint
+
+  return {
+    top: 24,
+    left: Math.max(container.clientWidth - 24, 24),
+  }
+}
+
+function isFocusableThoughtInvoker(element: HTMLElement | null | undefined): element is HTMLElement {
+  if (!element) return false
+
+  return Boolean(
+    element.matches('button, a[href], input, select, textarea')
+      || element.tabIndex >= 0,
+  )
+}
+
+function buildThoughtBlockCandidates(
+  container: HTMLElement,
+  quote: string,
+): Array<{ block: HTMLElement; estimatedStartOffset: number }> {
+  let normalizedCursor = 0
+
+  return Array.from(container.querySelectorAll<HTMLElement>('.bn-block')).flatMap((block) => {
+    const normalizedBlockText = normalizeThoughtOffsetText(block.textContent ?? '')
+    if (!normalizedBlockText) return []
+
+    const blockStartOffset = normalizedCursor === 0
+      ? 0
+      : normalizedCursor + 1
+    const candidates: Array<{ block: HTMLElement; estimatedStartOffset: number }> = []
+    let quoteIndex = normalizedBlockText.indexOf(quote)
+
+    while (quoteIndex >= 0) {
+      candidates.push({
+        block,
+        estimatedStartOffset: blockStartOffset + quoteIndex,
+      })
+      quoteIndex = normalizedBlockText.indexOf(quote, quoteIndex + 1)
+    }
+
+    normalizedCursor = blockStartOffset + normalizedBlockText.length
+    return candidates
+  })
+}
+
+function findThoughtJumpTarget(options: {
+  container: HTMLElement
+  markdown: string
+  thought: ThoughtRecord
+}): HTMLElement | null {
+  const { container, markdown, thought } = options
+  if (thought.anchor.type !== 'selection') return null
+
+  const matchedAnchor = matchThoughtAnchor(thought.anchor, markdown)
+  if (!matchedAnchor) return null
+
+  const targetOffset = normalizeThoughtOffsetText(
+    markdown.slice(0, matchedAnchor.startOffset),
+  ).length
+  const blockCandidates = buildThoughtBlockCandidates(container, thought.anchor.quote)
+  if (blockCandidates.length === 0) return null
+
+  return blockCandidates
+    .sort((left, right) => (
+      Math.abs(left.estimatedStartOffset - targetOffset)
+      - Math.abs(right.estimatedStartOffset - targetOffset)
+    ))[0]?.block ?? null
 }
 
 const TITLE_HEADING_SELECTOR = 'h1, [data-content-type="heading"][data-level="1"], [data-content-type="heading"]:not([data-level])'
@@ -626,15 +746,17 @@ function useHighlightJumpListener(options: {
 
 function useThoughtJumpListener(options: {
   activeNotePath?: string
+  activeMarkdown?: string
   thoughts: ThoughtRecord[]
   containerRef: React.RefObject<HTMLDivElement | null>
-  onOpenThought: (thought: ThoughtRecord) => void
+  onOpenThought: (thought: ThoughtRecord, anchorElement?: HTMLElement | null) => void
   onThoughtJumpHandled?: (thoughtId: string) => void
   onThoughtError?: (message: string) => void
   pendingThoughtJump?: ThoughtRecord | null
 }) {
   const {
     activeNotePath,
+    activeMarkdown,
     thoughts,
     containerRef,
     onOpenThought,
@@ -680,13 +802,19 @@ function useThoughtJumpListener(options: {
       } else {
         scrollContainer.scrollTop = 0
       }
-      onOpenThought(thought)
+      onOpenThought(thought, container)
       onThoughtJumpHandled?.(thought.id)
       return true
     }
 
-    const target = Array.from(container.querySelectorAll<HTMLElement>('.bn-block'))
-      .find((element) => element.textContent?.includes(thought.anchor.quote))
+    const target = activeMarkdown
+      ? findThoughtJumpTarget({
+          container,
+          markdown: activeMarkdown,
+          thought,
+        })
+      : Array.from(container.querySelectorAll<HTMLElement>('.bn-block'))
+        .find((element) => element.textContent?.includes(thought.anchor.quote))
     if (!target) {
       onThoughtError?.('Thought anchor could not be found in this note.')
       onThoughtJumpHandled?.(thought.id)
@@ -695,10 +823,10 @@ function useThoughtJumpListener(options: {
 
     target.scrollIntoView({ block: 'center', behavior: 'smooth' })
     pulseElement(target)
-    onOpenThought(thought)
+    onOpenThought(thought, target)
     onThoughtJumpHandled?.(thought.id)
     return true
-  }, [activeNotePath, containerRef, onOpenThought, onThoughtError, onThoughtJumpHandled, pulseElement])
+  }, [activeMarkdown, activeNotePath, containerRef, onOpenThought, onThoughtError, onThoughtJumpHandled, pulseElement])
 
   useEffect(() => {
     return () => {
@@ -871,9 +999,11 @@ export function SingleEditorView({ editor, entries, activeNotePath, activeMarkdo
   const { cssVars } = useEditorTheme()
   const themeMode = useDocumentThemeMode()
   const containerRef = useRef<HTMLDivElement>(null)
+  const thoughtInvokerFocusRef = useRef<HTMLElement | null>(null)
   const [draftThought, setDraftThought] = useState<ThoughtRecord | null>(null)
   const [openThought, setOpenThought] = useState<ThoughtRecord | null>(null)
   const [thoughtPopoverOpen, setThoughtPopoverOpen] = useState(false)
+  const [thoughtPopoverAnchor, setThoughtPopoverAnchor] = useState<ThoughtPopoverAnchorPoint | null>(null)
   const handleContainerClick = useEditorContainerClickHandler({ editable, editor })
   const handleEditorChange = useCompositionAwareEditorChange({ containerRef, onChange })
   const onImageUrl = useInsertImageCallback(editor)
@@ -925,7 +1055,30 @@ export function SingleEditorView({ editor, entries, activeNotePath, activeMarkdo
     () => entries.find((entry) => entry.path === activeNotePath) ?? null,
     [activeNotePath, entries],
   )
-  const openThoughtPopover = useCallback((thought: ThoughtRecord) => {
+  const restoreThoughtFocus = useCallback(() => {
+    const thoughtInvoker = thoughtInvokerFocusRef.current
+    thoughtInvokerFocusRef.current = null
+
+    if (thoughtInvoker?.isConnected) {
+      thoughtInvoker.focus()
+      return
+    }
+
+    editor.focus()
+  }, [editor])
+  const openThoughtPopover = useCallback((thought: ThoughtRecord, anchorElement?: HTMLElement | null) => {
+    const container = containerRef.current
+    if (container) {
+      setThoughtPopoverAnchor(
+        resolveThoughtPopoverAnchorPoint({
+          container,
+          anchorElement,
+        }),
+      )
+    }
+    thoughtInvokerFocusRef.current = isFocusableThoughtInvoker(anchorElement)
+      ? anchorElement
+      : null
     setDraftThought(null)
     setOpenThought(thought)
     setThoughtPopoverOpen(true)
@@ -953,6 +1106,12 @@ export function SingleEditorView({ editor, entries, activeNotePath, activeMarkdo
           bodyMarkdown: ' ',
         })
 
+    setThoughtPopoverAnchor(
+      resolveThoughtPopoverAnchorPoint({
+        container,
+      }),
+    )
+    thoughtInvokerFocusRef.current = null
     setOpenThought(null)
     setDraftThought(thought)
     setThoughtPopoverOpen(true)
@@ -960,6 +1119,7 @@ export function SingleEditorView({ editor, entries, activeNotePath, activeMarkdo
 
   useThoughtJumpListener({
     activeNotePath,
+    activeMarkdown,
     thoughts: activeThoughts,
     containerRef,
     onOpenThought: openThoughtPopover,
@@ -998,14 +1158,31 @@ export function SingleEditorView({ editor, entries, activeNotePath, activeMarkdo
         anchorLabel={thoughtAnchorLabel}
         thought={displayedThought}
         initialBody={draftThought?.bodyMarkdown}
-        trigger={<button type="button" className="sr-only" tabIndex={-1} aria-hidden="true">Thought</button>}
+        anchor={thoughtPopoverAnchor
+          ? (
+              <div
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  top: `${thoughtPopoverAnchor.top}px`,
+                  left: `${thoughtPopoverAnchor.left}px`,
+                  width: '1px',
+                  height: '1px',
+                  pointerEvents: 'none',
+                }}
+              />
+            )
+          : undefined}
         onOpenChange={(open) => {
           setThoughtPopoverOpen(open)
           if (!open) {
+            setThoughtPopoverAnchor(null)
             setDraftThought(null)
             setOpenThought(null)
+            restoreThoughtFocus()
           }
         }}
+        onCloseAutoFocus={restoreThoughtFocus}
         onSave={async (bodyMarkdown) => {
           const thoughtToSave = displayedThought
           if (!thoughtToSave) return
