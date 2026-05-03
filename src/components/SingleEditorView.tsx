@@ -767,6 +767,11 @@ function useThoughtJumpListener(options: {
   const pulseTimeoutRef = useRef<number | null>(null)
   const pulsingElementRef = useRef<HTMLElement | null>(null)
   const ignoreNextThoughtEventIdRef = useRef<string | null>(null)
+  const pendingThoughtJumpRef = useRef(pendingThoughtJump)
+
+  useEffect(() => {
+    pendingThoughtJumpRef.current = pendingThoughtJump
+  }, [pendingThoughtJump])
 
   const pulseElement = useCallback((target: HTMLElement) => {
     if (pulseTimeoutRef.current !== null) {
@@ -836,8 +841,21 @@ function useThoughtJumpListener(options: {
         window.clearTimeout(pulseTimeoutRef.current)
       }
       pulsingElementRef.current?.classList.remove(THOUGHT_PULSE_CLASS)
+      const pendingThought = pendingThoughtJumpRef.current
+      if (pendingThought) {
+        window.setTimeout(() => {
+          onThoughtJumpHandled?.(pendingThought.id)
+        }, 600)
+      }
     }
-  }, [])
+  }, [onThoughtJumpHandled])
+
+  useEffect(() => {
+    if (!pendingThoughtJump || !activeNotePath) return
+    if (pendingThoughtJump.notePath === activeNotePath) return
+
+    onThoughtJumpHandled?.(pendingThoughtJump.id)
+  }, [activeNotePath, onThoughtJumpHandled, pendingThoughtJump])
 
   useEffect(() => {
     if (!pendingThoughtJump) return

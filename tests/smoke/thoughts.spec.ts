@@ -151,5 +151,9 @@ test('article thoughts persist across reloads and can be reopened from the thoug
 
   await page.getByRole('button', { name: 'Delete', exact: true }).click()
   await expect(thoughtPin).toHaveCount(0)
+  await expect.poll(
+    () => listThoughtSidecars(tempVaultDir).length,
+    { timeout: 5_000, intervals: [100, 200, 300, 500, 1000] },
+  ).toBe(0)
   await expect(page.getByText('No thoughts yet')).toBeVisible()
 })

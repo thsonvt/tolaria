@@ -302,6 +302,39 @@ function handleVaultAllContent(url: URL, res: ServerResponse): boolean {
   return true
 }
 
+function handleVaultThoughts(url: URL, res: ServerResponse): boolean {
+  if (url.pathname !== '/api/vault/thoughts') return false
+  const vaultPath = readExistingQueryPath(url, res, 'path')
+  if (!vaultPath) return true
+
+  const thoughtsDir = path.join(vaultPath, '.tolaria', 'thoughts')
+  if (!fs.existsSync(thoughtsDir)) {
+    sendJson(res, [])
+    return true
+  }
+
+  try {
+    const thoughts = fs.readdirSync(thoughtsDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+      .flatMap((entry) => {
+        const parsed = JSON.parse(fs.readFileSync(path.join(thoughtsDir, entry.name), 'utf-8')) as unknown
+        return Array.isArray(parsed) ? parsed : []
+      })
+
+    thoughts.sort((left, right) => {
+      const leftRecord = left as { id?: string; updatedAt?: string }
+      const rightRecord = right as { id?: string; updatedAt?: string }
+      return String(rightRecord.updatedAt ?? '').localeCompare(String(leftRecord.updatedAt ?? ''))
+        || String(leftRecord.id ?? '').localeCompare(String(rightRecord.id ?? ''))
+    })
+    sendJson(res, thoughts)
+  } catch (err: unknown) {
+    sendJson(res, { error: err instanceof Error ? err.message : 'Failed to read thoughts' }, 500)
+  }
+
+  return true
+}
+
 function handleVaultEntry(url: URL, res: ServerResponse): boolean {
   if (url.pathname !== '/api/vault/entry') return false
   const filePath = readExistingQueryPath(url, res, 'path')
@@ -443,6 +476,7 @@ async function handleVaultApiRequest(req: IncomingMessage, res: ServerResponse):
     () => Promise.resolve(handleVaultList(url, res)),
     () => Promise.resolve(handleVaultContent(url, res)),
     () => Promise.resolve(handleVaultAllContent(url, res)),
+    () => Promise.resolve(handleVaultThoughts(url, res)),
     () => Promise.resolve(handleVaultEntry(url, res)),
     () => Promise.resolve(handleVaultSearch(url, res)),
     () => handleVaultSave(url, req, res),

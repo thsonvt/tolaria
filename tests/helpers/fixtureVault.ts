@@ -335,25 +335,10 @@ async function installFixtureVaultInitScript({ page, vaultPath, isGitRepo }: Fix
         readJson(
           `/api/vault/all-content?path=${encodeURIComponent(readCommandString(commandArgs, 'path', resolvedVaultPath))}`,
         ),
-      list_thoughts: async (commandArgs?: FixtureCommandArgs) => {
-        const vaultPath = readCommandString(commandArgs, 'vaultPath', resolvedVaultPath)
-        const entries = await readVaultList({ path: vaultPath }) as Array<{ path?: string }>
-        const thoughts = (
-          await Promise.all(
-            entries
-              .map((entry) => entry.path)
-              .filter((notePath): notePath is string => typeof notePath === 'string' && notePath.length > 0)
-              .map((notePath) => readThoughtFile(vaultPath, notePath)),
-          )
-        ).flat()
-
-        return thoughts.sort((left, right) => {
-          const leftRecord = left as { id?: string; updatedAt?: string }
-          const rightRecord = right as { id?: string; updatedAt?: string }
-          return String(rightRecord.updatedAt ?? '').localeCompare(String(leftRecord.updatedAt ?? ''))
-            || String(leftRecord.id ?? '').localeCompare(String(rightRecord.id ?? ''))
-        })
-      },
+      list_thoughts: (commandArgs?: FixtureCommandArgs) =>
+        readJson(
+          `/api/vault/thoughts?path=${encodeURIComponent(readCommandString(commandArgs, 'vaultPath', resolvedVaultPath))}`,
+        ),
       read_note_thoughts: (commandArgs?: FixtureCommandArgs) =>
         readThoughtFile(
           readCommandString(commandArgs, 'vaultPath', resolvedVaultPath),
@@ -457,11 +442,21 @@ async function installFixtureVaultInitScript({ page, vaultPath, isGitRepo }: Fix
         const notePath = readCommandString(commandArgs, 'notePath')
         const thoughtId = readCommandString(commandArgs, 'thoughtId')
         const thoughts = await readThoughtFile(vaultPath, notePath)
-        await writeThoughtFile(
-          vaultPath,
-          notePath,
-          thoughts.filter((candidate) => (candidate as { id?: string }).id !== thoughtId),
-        )
+        const nextThoughts = thoughts.filter((candidate) => (candidate as { id?: string }).id !== thoughtId)
+        if (nextThoughts.length === 0) {
+          if (thoughts.length === 0) return null
+
+          await readJson('/api/vault/delete', {
+            method: 'POST',
+            headers: jsonHeaders,
+            body: JSON.stringify({
+              path: thoughtSidecarPath(vaultPath, notePath),
+            }),
+          })
+          return null
+        }
+
+        await writeThoughtFile(vaultPath, notePath, nextThoughts)
         return null
       },
     })
