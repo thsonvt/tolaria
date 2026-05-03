@@ -54,11 +54,17 @@ mod tests {
 
     #[test]
     fn accepts_https_and_normalizes_whitespace() {
-        assert_eq!(validate("  https://example.com/post  ").unwrap(), "https://example.com/post");
+        assert_eq!(
+            validate("  https://example.com/post  ").unwrap(),
+            "https://example.com/post"
+        );
     }
 
     #[test]
     fn accepts_http() {
-        assert_eq!(validate("http://example.com").unwrap(), "http://example.com/");
+        assert_eq!(
+            validate("http://example.com").unwrap(),
+            "http://example.com/"
+        );
     }
 }

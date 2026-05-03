@@ -42,7 +42,11 @@ fn slugify(input: &str) -> String {
         .join("-")
 }
 
-fn contents_for(article: &ExtractedArticle, source_url: &str, captured_at: DateTime<Utc>) -> String {
+fn contents_for(
+    article: &ExtractedArticle,
+    source_url: &str,
+    captured_at: DateTime<Utc>,
+) -> String {
     let title = display_title(article, captured_at);
     let mut out = String::from("---\n");
     out.push_str("type: Capture\n");
@@ -110,7 +114,9 @@ mod tests {
         assert!(doc.contents.contains("type: Capture\n"));
         assert!(doc.contents.contains("source: web\n"));
         assert!(doc.contents.contains("url: https://example.com/post\n"));
-        assert!(doc.contents.contains("title: How to Think About Knowledge\n"));
+        assert!(doc
+            .contents
+            .contains("title: How to Think About Knowledge\n"));
         assert!(doc.contents.contains("author: Jane Doe\n"));
         assert!(doc.contents.contains("captured_at: 2026-05-03T22:14:00Z\n"));
     }

@@ -77,7 +77,7 @@ pub fn build_and_query_with_embedder(
 
         let chunk_records = chunks
             .into_iter()
-            .zip(embeddings.into_iter())
+            .zip(embeddings)
             .map(|(chunk, embedding)| {
                 let text_hash = sha256_hex(chunk.text.as_bytes());
                 ChunkRecord {
