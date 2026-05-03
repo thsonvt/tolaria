@@ -14,6 +14,7 @@ export type KeyboardActions = Pick<
   | 'onCommandPalette'
   | 'onSearch'
   | 'onCreateNote'
+  | 'onCaptureFromUrl'
   | 'onSave'
   | 'onFindInNote'
   | 'onReplaceInNote'

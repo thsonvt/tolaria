@@ -7,6 +7,7 @@ export const APP_COMMAND_IDS = {
   appCheckForUpdates: 'app-check-for-updates',
   fileNewNote: 'file-new-note',
   fileNewType: 'file-new-type',
+  fileCaptureUrl: 'file-capture-url',
   fileQuickOpen: 'file-quick-open',
   fileSave: 'file-save',
   editFindInNote: 'edit-find-in-note',
@@ -80,6 +81,7 @@ type SimpleHandlerKey =
   | 'onCheckForUpdates'
   | 'onCreateNote'
   | 'onCreateType'
+  | 'onCaptureFromUrl'
   | 'onQuickOpen'
   | 'onSave'
   | 'onFindInNote'
@@ -154,6 +156,11 @@ export const APP_COMMAND_DEFINITIONS: Record<AppCommandId, AppCommandDefinition>
   [APP_COMMAND_IDS.fileNewType]: {
     route: { kind: 'handler', handler: 'onCreateType' },
     menuOwned: true,
+  },
+  [APP_COMMAND_IDS.fileCaptureUrl]: {
+    route: { kind: 'handler', handler: 'onCaptureFromUrl' },
+    menuOwned: true,
+    shortcut: { combo: 'command-or-ctrl-shift', key: 'u', code: 'KeyU', display: '⌘⇧U' },
   },
   [APP_COMMAND_IDS.fileQuickOpen]: {
     route: { kind: 'handler', handler: 'onQuickOpen' },

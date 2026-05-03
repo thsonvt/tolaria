@@ -29,6 +29,7 @@ interface AppCommandsConfig {
   onReplaceInNote?: () => void
   onCreateNote: () => void
   onCreateNoteOfType: (type: string) => void
+  onCaptureFromUrl?: () => void
   onSave: () => void
   onOpenSettings: () => void
   onOpenFeedback?: () => void
@@ -147,6 +148,7 @@ type CommandRegistryCoreActions = Pick<
   | 'onQuickOpen'
   | 'onCreateNote'
   | 'onCreateNoteOfType'
+  | 'onCaptureFromUrl'
   | 'onSave'
   | 'onFindInNote'
   | 'onReplaceInNote'
@@ -239,6 +241,7 @@ function createKeyboardActions(
     onFindInNote: config.onFindInNote,
     onReplaceInNote: config.onReplaceInNote,
     onCreateNote: config.onCreateNote,
+    onCaptureFromUrl: config.onCaptureFromUrl,
     onSave: config.onSave,
     onOpenSettings: config.onOpenSettings,
     onDeleteNote: config.onDeleteNote,
@@ -279,6 +282,7 @@ function createMenuEventActionHandlers(
   | 'onSetViewMode'
   | 'onCreateNote'
   | 'onCreateType'
+  | 'onCaptureFromUrl'
   | 'onQuickOpen'
   | 'onSave'
   | 'onOpenSettings'
@@ -304,6 +308,7 @@ function createMenuEventActionHandlers(
     onSetViewMode: config.onSetViewMode,
     onCreateNote: config.onCreateNote,
     onCreateType: config.onCreateType,
+    onCaptureFromUrl: config.onCaptureFromUrl,
     onQuickOpen: config.onQuickOpen,
     onSave: config.onSave,
     onOpenSettings: config.onOpenSettings,
@@ -416,6 +421,7 @@ function createCommandRegistryCoreConfig(
     modifiedCount: config.modifiedCount,
     onQuickOpen: config.onQuickOpen,
     onCreateNote: config.onCreateNote,
+    onCaptureFromUrl: config.onCaptureFromUrl,
     onCreateNoteOfType: config.onCreateNoteOfType,
     onSave: config.onSave,
     onOpenSettings: config.onOpenSettings,

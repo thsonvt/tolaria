@@ -64,6 +64,7 @@ interface CommandRegistryConfig {
   canRestoreDeletedNote?: boolean
   onQuickOpen: () => void
   onCreateNote: () => void
+  onCaptureFromUrl?: () => void
   onCreateNoteOfType: (type: string) => void
   onSave: () => void
   onOpenSettings: () => void
@@ -123,7 +124,7 @@ interface CommandRegistryConfig {
 export function useCommandRegistry(config: CommandRegistryConfig): import('./commands/types').CommandAction[] {
   const {
     activeTabPath, entries, modifiedCount,
-    onQuickOpen, onCreateNote, onCreateNoteOfType, onSave, onOpenSettings, onOpenFeedback,
+    onQuickOpen, onCreateNote, onCaptureFromUrl, onCreateNoteOfType, onSave, onOpenSettings, onOpenFeedback,
     onDeleteNote, onArchiveNote, onUnarchiveNote,
     onCommitPush, onPull, onResolveConflicts, onSetViewMode, onToggleInspector, onToggleDiff, onToggleRawEditor, onFindInNote, onReplaceInNote, noteLayout, onToggleNoteLayout, onToggleAIChat, onOpenVault, onCreateEmptyVault,
     selectedViewName, onMoveSelectedViewUp, onMoveSelectedViewDown, canMoveSelectedViewUp, canMoveSelectedViewDown,
@@ -184,7 +185,7 @@ export function useCommandRegistry(config: CommandRegistryConfig): import('./com
 
   const noteCommands = useMemo(() => buildNoteCommands({
     hasActiveNote, activeTabPath, activeFileKind: activeEntry?.fileKind ?? 'markdown', isArchived,
-    onCreateNote, onCreateType, onSave,
+    onCreateNote, onCaptureFromUrl, onCreateType, onSave,
     onFindInNote, onReplaceInNote,
     onDeleteNote, onArchiveNote, onUnarchiveNote,
     onChangeNoteType, onMoveNoteToFolder, canMoveNoteToFolder,
@@ -195,7 +196,7 @@ export function useCommandRegistry(config: CommandRegistryConfig): import('./com
     onRestoreDeletedNote, canRestoreDeletedNote,
   }), [
     hasActiveNote, activeTabPath, activeEntry?.fileKind, isArchived,
-    onCreateNote, onCreateType, onSave, onFindInNote, onReplaceInNote, onDeleteNote, onArchiveNote, onUnarchiveNote,
+    onCreateNote, onCaptureFromUrl, onCreateType, onSave, onFindInNote, onReplaceInNote, onDeleteNote, onArchiveNote, onUnarchiveNote,
     onChangeNoteType, onMoveNoteToFolder, canMoveNoteToFolder,
     onSetNoteIcon, onRemoveNoteIcon, activeNoteHasIcon, onOpenInNewWindow,
     onRevealActiveFile, onCopyActiveFilePath, onOpenActiveFileExternal,

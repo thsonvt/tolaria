@@ -33,6 +33,7 @@ const MENU_SECTIONS: ReadonlyArray<MenuSection> = [
     items: [
       { kind: 'command', label: 'New Note', commandId: APP_COMMAND_IDS.fileNewNote },
       { kind: 'command', label: 'New Type', commandId: APP_COMMAND_IDS.fileNewType },
+      { kind: 'command', label: 'Capture from URL', commandId: APP_COMMAND_IDS.fileCaptureUrl },
       { kind: 'command', label: 'Quick Open', commandId: APP_COMMAND_IDS.fileQuickOpen },
       { kind: 'separator' },
       { kind: 'command', label: 'Save', commandId: APP_COMMAND_IDS.fileSave },

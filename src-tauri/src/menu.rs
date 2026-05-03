@@ -9,6 +9,7 @@ const APP_CHECK_FOR_UPDATES: &str = "app-check-for-updates";
 
 const FILE_NEW_NOTE: &str = "file-new-note";
 const FILE_NEW_TYPE: &str = "file-new-type";
+const FILE_CAPTURE_URL: &str = "file-capture-url";
 const FILE_QUICK_OPEN: &str = "file-quick-open";
 const FILE_QUICK_OPEN_ALIAS: &str = "file-quick-open-alias";
 const FILE_SAVE: &str = "file-save";
@@ -61,6 +62,7 @@ const CUSTOM_IDS: &[&str] = &[
     APP_CHECK_FOR_UPDATES,
     FILE_NEW_NOTE,
     FILE_NEW_TYPE,
+    FILE_CAPTURE_URL,
     FILE_QUICK_OPEN,
     FILE_QUICK_OPEN_ALIAS,
     FILE_SAVE,
@@ -175,6 +177,10 @@ fn build_file_menu(app: &App) -> MenuResult {
     let new_type = MenuItemBuilder::new("New Type")
         .id(FILE_NEW_TYPE)
         .build(app)?;
+    let capture_url = MenuItemBuilder::new("Capture from URL...")
+        .id(FILE_CAPTURE_URL)
+        .accelerator("CmdOrCtrl+Shift+U")
+        .build(app)?;
     let quick_open = MenuItemBuilder::new("Quick Open")
         .id(FILE_QUICK_OPEN)
         .accelerator("CmdOrCtrl+P")
@@ -190,6 +196,7 @@ fn build_file_menu(app: &App) -> MenuResult {
     Ok(SubmenuBuilder::new(app, "File")
         .item(&new_note)
         .item(&new_type)
+        .item(&capture_url)
         .item(&quick_open)
         .item(&quick_open_alias)
         .separator()

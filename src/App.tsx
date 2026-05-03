@@ -21,6 +21,7 @@ import { AiAgentsOnboardingPrompt } from './components/AiAgentsOnboardingPrompt'
 import { TelemetryConsentDialog } from './components/TelemetryConsentDialog'
 import { FeedbackDialog } from './components/FeedbackDialog'
 import { McpSetupDialog } from './components/McpSetupDialog'
+import { CaptureFromUrlDialog } from './components/CaptureFromUrlDialog'
 import { NoteRetargetingDialogs } from './components/note-retargeting/NoteRetargetingDialogs'
 import { useTelemetry } from './hooks/useTelemetry'
 import { useMcpStatus } from './hooks/useMcpStatus'
@@ -261,10 +262,12 @@ function App() {
   const dialogs = useDialogs()
   const { showAIChat, toggleAIChat } = dialogs
   const [showFeedback, setShowFeedback] = useState(false)
+  const [showCaptureFromUrl, setShowCaptureFromUrl] = useState(false)
   const [showMcpSetupDialog, setShowMcpSetupDialog] = useState(false)
   const [mcpDialogAction, setMcpDialogAction] = useState<'connect' | 'disconnect' | null>(null)
   const openFeedback = useCallback(() => setShowFeedback(true), [])
   const closeFeedback = useCallback(() => setShowFeedback(false), [])
+  const openCaptureFromUrl = useCallback(() => setShowCaptureFromUrl(true), [])
   const networkStatus = useNetworkStatus()
 
   useEffect(() => {
@@ -761,6 +764,11 @@ function App() {
     onSelectNote: notes.handleSelectNote,
     activeTabPath: notes.activeTabPath,
   })
+
+  const handleCapturedFromUrl = useCallback((notePath: string) => {
+    vaultBridge.handleAgentFileCreated(notePath)
+    setToastMessage('Captured URL')
+  }, [vaultBridge, setToastMessage])
 
   const conflictFlow = useConflictFlow({
     resolvedPath, entries: vault.entries,
@@ -1433,6 +1441,7 @@ function App() {
     onReplaceInNote: activeDeletedFile ? undefined : replaceInNoteCommand,
     onCreateNote: notes.handleCreateNoteImmediate,
     onCreateNoteOfType: notes.handleCreateNoteImmediate,
+    onCaptureFromUrl: openCaptureFromUrl,
     onSave: appSave.handleSave,
     onOpenSettings: dialogs.openSettings,
     onOpenFeedback: openFeedback,
@@ -1792,6 +1801,12 @@ function App() {
           onClose={dialogs.closeCommandPalette}
         />
         <SearchPanel open={dialogs.showSearch} vaultPath={resolvedPath} entries={vault.entries} onSelectNote={notes.handleSelectNote} onClose={dialogs.closeSearch} />
+        <CaptureFromUrlDialog
+          open={showCaptureFromUrl}
+          vaultPath={resolvedPath}
+          onOpenChange={setShowCaptureFromUrl}
+          onCaptured={handleCapturedFromUrl}
+        />
         <CreateTypeDialog open={dialogs.showCreateTypeDialog} onClose={dialogs.closeCreateType} onCreate={handleCreateType} />
         <NoteRetargetingDialogs
           dialogState={noteRetargetingUi.dialogState}
