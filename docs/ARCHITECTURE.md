@@ -143,6 +143,7 @@ flowchart TD
             GIT["git/\n(commit, sync, clone)"]
             SETTINGS["settings.rs"]
             SEARCH["search.rs"]
+            CAPTURE["capture/\nvalidate, fetch, extract, render"]
             CLI["ai_agents.rs\n+ claude_cli.rs"]
         end
 
@@ -154,6 +155,7 @@ flowchart TD
         end
 
         FE -->|"Tauri IPC"| RB
+        CAPTURE -->|"write Capture note"| VAULT
         CLI -->|"spawn subprocess"| CCLI
         LIB -->|"register / monitor"| MCP
         GIT -->|"clone / fetch / push / pull"| GCLI
@@ -164,6 +166,14 @@ flowchart TD
     style RB fill:#fff8e1,stroke:#ff9800,color:#000
     style EXT fill:#f3e5f5,stroke:#9c27b0,color:#000
 ```
+
+### Capture from URL
+
+Phase 0 second-brain capture is implemented as a native ingestion pipeline, not a renderer-only shortcut. The `capture_url` command accepts a URL plus the active vault path, validates that the URL is HTTP(S), fetches HTML with a 5 MiB cap and HTML content-type guard, extracts title/byline/body markdown, renders a `type: Capture` note with `source`, `url`, `title`, and `captured_at` frontmatter, writes it to the vault root, then returns the absolute note path.
+
+The React surface is deliberately thin: `CaptureFromUrlDialog` collects the URL, `useCaptureFromUrl` invokes `capture_url`, and `App` feeds the returned path through `handleAgentFileCreated()` so the note list reloads and the new note opens like any externally-created Markdown file. The menu/command-palette action is `file-capture-url` and uses `Cmd/Ctrl+Shift+U`; `Cmd/Ctrl+Shift+L` remains reserved for the AI panel.
+
+The browser dev harness mirrors the same command as `POST /api/vault/capture-url` in `vite.config.ts` so Playwright can prove the full dialog-to-file flow without native Tauri. Production capture authority remains the Rust command.
 
 ## Four-Panel Layout
 

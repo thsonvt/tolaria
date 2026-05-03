@@ -63,6 +63,24 @@ Semantic search indexes Markdown notes only. Each indexed note is represented by
 
 The cache is stored outside the vault and can be rebuilt from the filesystem at any time.
 
+### Capture Notes
+
+`Capture` is the first second-brain ingestion type. A captured web article is still an ordinary Markdown note at the vault root; the only persisted contract is frontmatter plus the rendered article body.
+
+```yaml
+---
+type: Capture
+source: web
+url: https://example.com/article
+title: Example Article
+captured_at: 2026-05-03T22:14:00Z
+---
+```
+
+`capture_url` is a Tauri command that validates an HTTP(S) URL, fetches HTML with content-type and size guards, extracts a readable article, renders frontmatter/body Markdown, writes the note to disk, then returns the absolute note path. The frontend `Capture from URL` command and dialog call that command through `useCaptureFromUrl`; on success, the app reloads and opens the created note through the same file-created path used by agent-authored notes.
+
+Browser Playwright runs do not have native Tauri IPC, so the dev vault API mirrors this command at `POST /api/vault/capture-url`. That endpoint exists only to keep smoke tests and browser development on the same vault-write contract as the native app.
+
 ### Vault Git Capability
 
 Git is a per-vault capability, not a prerequisite for the document model. A vault can be:
