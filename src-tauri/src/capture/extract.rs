@@ -13,6 +13,8 @@ pub struct ExtractedArticle {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExtractError {
+    #[error("invalid base url: {0}")]
+    InvalidUrl(String),
     #[error("readability failed: {0}")]
     Readability(String),
     #[error("article body is empty")]
@@ -20,7 +22,7 @@ pub enum ExtractError {
 }
 
 pub fn extract(html: &str, base_url: &str) -> Result<ExtractedArticle, ExtractError> {
-    let url = Url::parse(base_url).map_err(|e| ExtractError::Readability(e.to_string()))?;
+    let url = Url::parse(base_url).map_err(|e| ExtractError::InvalidUrl(e.to_string()))?;
     let product = run_readability(html, &url)?;
     let body_markdown = to_markdown(&product.content)?;
     let trimmed = body_markdown.trim().to_string();
@@ -81,5 +83,11 @@ mod tests {
     fn rejects_empty_body() {
         let err = extract("<html><body></body></html>", "https://example.com").unwrap_err();
         assert!(matches!(err, ExtractError::Empty));
+    }
+
+    #[test]
+    fn rejects_invalid_base_url() {
+        let err = extract("<html><body><p>x</p></body></html>", "not a url").unwrap_err();
+        assert!(matches!(err, ExtractError::InvalidUrl(_)));
     }
 }
