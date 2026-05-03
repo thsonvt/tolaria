@@ -650,18 +650,22 @@ export function useNoteListModel({
     isPanelActive: isNoteListSearchActive,
     toggleSearchShortcut,
   } = interaction.noteListKeyboard
+  const isCustomCollectionView = isHighlightsView || isThoughtsView
+  const isNormalNoteListSearchActive = !isCustomCollectionView && isNoteListSearchActive
 
   useEffect(() => {
-    dispatchNoteListSearchAvailability(isNoteListSearchActive)
+    dispatchNoteListSearchAvailability(isNormalNoteListSearchActive)
     return () => dispatchNoteListSearchAvailability(false)
-  }, [isNoteListSearchActive])
+  }, [isNormalNoteListSearchActive])
 
   useEffect(() => {
+    if (isCustomCollectionView) return undefined
+
     return addNoteListSearchToggleListener(() => {
       if (!isNoteListSearchActive) return
       toggleSearchShortcut()
     })
-  }, [isNoteListSearchActive, toggleSearchShortcut])
+  }, [isCustomCollectionView, isNoteListSearchActive, toggleSearchShortcut])
 
   return buildNoteListLayoutModel({
     selection,

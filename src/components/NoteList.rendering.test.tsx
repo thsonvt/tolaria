@@ -4,6 +4,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { NoteList } from './NoteList'
 import { openNoteListPropertiesPicker } from './note-list/noteListPropertiesEvents'
 import {
+  NOTE_LIST_SEARCH_AVAILABILITY_EVENT,
+  readNoteListSearchAvailability,
+} from '../utils/noteListSearchEvents'
+import {
   allSelection,
   buildNoteListProps,
   makeEntry,
@@ -176,6 +180,42 @@ describe('NoteList rendering', () => {
     expect(screen.queryByTitle('Create new note')).not.toBeInTheDocument()
     expect(screen.queryByTestId('sort-button-__list__')).not.toBeInTheDocument()
     expect(screen.getByPlaceholderText('Filter highlights')).toBeInTheDocument()
+  })
+
+  it('does not advertise normal note-list search in thoughts mode', async () => {
+    const availability: boolean[] = []
+    const listener = (event: Event) => {
+      const enabled = readNoteListSearchAvailability(event)
+      if (enabled !== null) availability.push(enabled)
+    }
+    window.addEventListener(NOTE_LIST_SEARCH_AVAILABILITY_EVENT, listener)
+
+    try {
+      renderNoteList({
+        selection: { kind: 'filter', filter: 'thoughts' },
+        thoughtGroups: [{
+          notePath: '/vault/context.md',
+          noteTitle: 'Context',
+          thoughts: [{
+            id: 'thought-1',
+            notePath: '/vault/context.md',
+            noteTitle: 'Context',
+            anchor: { type: 'article' },
+            bodyMarkdown: 'Keep the user commentary separate.',
+            createdAt: '2026-05-03T08:00:00.000Z',
+            updatedAt: '2026-05-03T08:00:00.000Z',
+          }],
+        }],
+      })
+
+      await waitFor(() => expect(availability.length).toBeGreaterThan(0))
+
+      expect(availability).not.toContain(true)
+      expect(screen.queryByTitle('Search notes')).not.toBeInTheDocument()
+      expect(screen.getByPlaceholderText('Filter thoughts')).toBeInTheDocument()
+    } finally {
+      window.removeEventListener(NOTE_LIST_SEARCH_AVAILABILITY_EVENT, listener)
+    }
   })
 
   it('renders all entries in the all-notes view', () => {
