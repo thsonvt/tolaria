@@ -13,6 +13,9 @@ import { triggerMenuCommand } from './testBridge'
 const CAPTURE_TITLE = 'Test Capture Article'
 const CAPTURE_FILENAME = 'test-capture-article.md'
 const CAPTURE_PARAGRAPH = 'Capture from URL stores a readable article body in the active vault.'
+const CAPTURE_SECTION = 'Background'
+const CAPTURE_IMAGE_URL = 'https://example.com/capture-diagram.png'
+const CAPTURE_IMAGE_ALT = 'Capture architecture diagram'
 
 let tempVaultDir: string
 let articleServer: Server | null = null
@@ -29,6 +32,13 @@ async function startArticleServer(): Promise<string> {
             <article>
               <h1>${CAPTURE_TITLE}</h1>
               <p>${CAPTURE_PARAGRAPH}</p>
+              <figure>
+                <picture>
+                  <source type="image/webp" srcset="https://example.com/capture-diagram.webp 800w" />
+                  <img src="${CAPTURE_IMAGE_URL}" alt="${CAPTURE_IMAGE_ALT}" />
+                </picture>
+              </figure>
+              <h1 class="header-anchor-post">${CAPTURE_SECTION}</h1>
               <p>The smoke covers the dialog, dev vault API, file write, and reload path.</p>
             </article>
           </body>
@@ -89,4 +99,6 @@ test('paste URL creates and opens a Capture note @smoke', async ({ page }) => {
   expect(content).toContain('source: web')
   expect(content).toContain(`url: ${articleUrl}`)
   expect(content).toContain(CAPTURE_PARAGRAPH)
+  expect(content).toContain(`![${CAPTURE_IMAGE_ALT}](${CAPTURE_IMAGE_URL})`)
+  expect(content).toContain(`## ${CAPTURE_SECTION}`)
 })

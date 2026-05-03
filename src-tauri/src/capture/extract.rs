@@ -23,7 +23,8 @@ pub enum ExtractError {
 
 pub fn extract(html: &str, base_url: &str) -> Result<ExtractedArticle, ExtractError> {
     let url = Url::parse(base_url).map_err(|e| ExtractError::InvalidUrl(e.to_string()))?;
-    let product = run_readability(html, &url)?;
+    let normalized_html = normalize_before_readability(html);
+    let product = run_readability(&normalized_html, &url)?;
     let body_markdown = to_markdown(&product.content)?;
     let trimmed = body_markdown.trim().to_string();
     if trimmed.is_empty() {
@@ -43,6 +44,134 @@ fn run_readability(html: &str, url: &Url) -> Result<extractor::Product, ExtractE
 
 fn to_markdown(html: &str) -> Result<String, ExtractError> {
     htmd::convert(html).map_err(|e| ExtractError::Readability(e.to_string()))
+}
+
+fn normalize_before_readability(html: &str) -> String {
+    let with_images = inject_substack_captioned_images(html);
+    demote_substack_anchor_headings(&with_images)
+}
+
+fn inject_substack_captioned_images(html: &str) -> String {
+    const MARKER: &str = "captioned-image-container";
+    let mut insertions: Vec<(usize, String)> = Vec::new();
+    let mut search_from = 0;
+
+    while let Some(relative_marker_index) = html[search_from..].find(MARKER) {
+        let marker_index = search_from + relative_marker_index;
+        let Some(div_start) = html[..marker_index].rfind("<div") else {
+            search_from = marker_index + MARKER.len();
+            continue;
+        };
+        if marker_index.saturating_sub(div_start) > 256 {
+            search_from = marker_index + MARKER.len();
+            continue;
+        }
+
+        let scan_end = html.len().min(marker_index + 8_000);
+        if let Some(image_html) = substack_captioned_image_fallback(&html[marker_index..scan_end]) {
+            insertions.push((div_start, image_html));
+        }
+        search_from = marker_index + MARKER.len();
+    }
+
+    if insertions.is_empty() {
+        return html.to_string();
+    }
+
+    let mut out =
+        String::with_capacity(html.len() + insertions.iter().map(|(_, s)| s.len()).sum::<usize>());
+    let mut cursor = 0;
+    for (index, insertion) in insertions {
+        out.push_str(&html[cursor..index]);
+        out.push_str(&insertion);
+        cursor = index;
+    }
+    out.push_str(&html[cursor..]);
+    out
+}
+
+fn substack_captioned_image_fallback(fragment: &str) -> Option<String> {
+    let image_start = fragment.find("<img")?;
+    let image_fragment = &fragment[image_start..];
+    let image_end = image_fragment.find('>')?;
+    let image_tag = &image_fragment[..=image_end];
+    let src = html_attr(image_tag, "src")?;
+    let alt = html_attr(image_tag, "alt").unwrap_or_default();
+    Some(format!(
+        r#"<p data-tolaria-capture-image="substack"><img src="{}" alt="{}"></p>"#,
+        escape_html_attr(&src),
+        escape_html_attr(&alt)
+    ))
+}
+
+fn demote_substack_anchor_headings(html: &str) -> String {
+    let Ok(re) = Regex::new(
+        r#"(?is)<h1(?P<attrs>[^>]*class=["'][^"']*\bheader-anchor-post\b[^"']*["'][^>]*)>(?P<body>.*?)</h1>"#,
+    ) else {
+        return html.to_string();
+    };
+
+    re.replace_all(html, |caps: &regex::Captures<'_>| {
+        let text = plain_text(&caps["body"]);
+        if text.is_empty() {
+            caps[0].to_string()
+        } else {
+            format!("<h2>{}</h2>", escape_html_text(&text))
+        }
+    })
+    .into_owned()
+}
+
+fn html_attr(tag: &str, name: &str) -> Option<String> {
+    let pattern = format!(
+        r#"(?is)\b{}\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"#,
+        regex::escape(name)
+    );
+    let re = Regex::new(&pattern).ok()?;
+    let captures = re.captures(tag)?;
+    captures
+        .get(1)
+        .or_else(|| captures.get(2))
+        .or_else(|| captures.get(3))
+        .map(|m| decode_basic_entities(m.as_str().trim()))
+        .filter(|value| !value.is_empty())
+}
+
+fn plain_text(html: &str) -> String {
+    let Ok(tag_re) = Regex::new(r"(?is)<[^>]+>") else {
+        return String::new();
+    };
+    let without_tags = tag_re.replace_all(html, " ");
+    decode_basic_entities(&without_tags)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn decode_basic_entities(input: &str) -> String {
+    input
+        .replace("&quot;", "\"")
+        .replace("&#34;", "\"")
+        .replace("&apos;", "'")
+        .replace("&#39;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+}
+
+fn escape_html_attr(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn escape_html_text(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn extract_byline(html: &str) -> Option<String> {
@@ -77,6 +206,56 @@ mod tests {
         let html = fixture("article-medium.html");
         let article = extract(&html, "https://medium.com/@author/post").unwrap();
         assert_eq!(article.byline.as_deref(), Some("Jane Doe"));
+    }
+
+    #[test]
+    fn preserves_substack_picture_images_and_following_headings() {
+        let html = r#"
+            <html>
+              <body>
+                <article>
+                  <h1>Claude Code Architecture</h1>
+                  <p>We are entering the third era of LLM applications.</p>
+                  <p>The harness is the body and context economy matters.</p>
+                  <div class="captioned-image-container">
+                    <figure>
+                      <a href="https://cdn.example.com/full-size.png" class="image-link">
+                        <div class="image2-inset">
+                          <picture>
+                            <source
+                              type="image/webp"
+                              srcset="https://cdn.example.com/image-424.webp 424w, https://cdn.example.com/image-848.webp 848w"
+                            />
+                            <img
+                              alt="Inside Claude Code architecture diagram"
+                              src="https://cdn.example.com/image.png"
+                            />
+                          </picture>
+                        </div>
+                      </a>
+                    </figure>
+                  </div>
+                  <div class="subscription-widget-wrap">
+                    <form><input name="email" type="email" /></form>
+                  </div>
+                  <h1 class="header-anchor-post">
+                    Background
+                    <div class="header-anchor-parent">
+                      <button aria-label="Link"><svg><title></title></svg></button>
+                    </div>
+                  </h1>
+                  <p>I got curious and reverse engineered the design pillars.</p>
+                </article>
+              </body>
+            </html>
+        "#;
+
+        let article = extract(html, "https://example.substack.com/p/post").unwrap();
+
+        assert!(article.body_markdown.contains(
+            "![Inside Claude Code architecture diagram](https://cdn.example.com/image.png)"
+        ));
+        assert!(article.body_markdown.contains("## Background"));
     }
 
     #[test]

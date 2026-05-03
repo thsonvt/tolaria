@@ -404,22 +404,58 @@ function captureBodyMarkdown(html: string): string {
     ?? html.match(/<main[^>]*>([\s\S]*?)<\/main>/i)?.[1]
     ?? html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1]
     ?? html
-  const paragraphs = Array.from(article.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi))
-    .map((match) => stripHtml(match[1]).trim())
+  const blocks = Array.from(article.matchAll(/<(h[1-6]|p)\b([^>]*)>([\s\S]*?)<\/\1>|<img\b([^>]*)\/?>/gi))
+    .map((match) => captureBlockMarkdown(match))
     .filter(Boolean)
-  return paragraphs.length > 0 ? paragraphs.join('\n\n') : stripHtml(article).trim()
+  return blocks.length > 0 ? blocks.join('\n\n') : stripHtml(article).trim()
+}
+
+function captureBlockMarkdown(match: RegExpMatchArray): string {
+  const tag = match[1]?.toLowerCase()
+  if (tag?.startsWith('h')) {
+    const text = stripHtml(match[3] ?? '').trim()
+    if (!text) return ''
+    const level = tag === 'h1' && /\bheader-anchor-post\b/i.test(match[2] ?? '')
+      ? 2
+      : Number(tag.slice(1))
+    if (level === 1) return ''
+    return `${'#'.repeat(level)} ${text}`
+  }
+  if (tag === 'p') {
+    return stripHtml(match[3] ?? '').trim()
+  }
+
+  const imgAttrs = match[4] ?? ''
+  const src = htmlAttr(imgAttrs, 'src')
+  if (!src) return ''
+  const alt = htmlAttr(imgAttrs, 'alt') ?? ''
+  return `![${alt}](${src})`
+}
+
+function htmlAttr(attrs: string, name: string): string | null {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const match = attrs.match(new RegExp(`\\b${escapedName}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'))
+  return decodeHtml(match?.[1] ?? match?.[2] ?? match?.[3] ?? '').trim() || null
 }
 
 function stripHtml(value: string): string {
-  return value
+  return decodeHtml(value
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
     .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' '))
+}
+
+function decodeHtml(value: string): string {
+  return value
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
-    .replace(/\s+/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&#34;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'")
 }
 
 function renderCaptureNote(title: string, sourceUrl: string, bodyMarkdown: string): { filename: string; content: string } {
