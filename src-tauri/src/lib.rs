@@ -4,6 +4,7 @@ pub mod capture;
 pub mod claude_cli;
 mod cli_agent_runtime;
 pub mod codex_cli;
+mod codex_events;
 mod commands;
 pub mod frontmatter;
 pub mod gemini_cli;

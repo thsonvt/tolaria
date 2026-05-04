@@ -328,6 +328,11 @@ where
         }
         "item.started" => emit_codex_item_event(json, false, emit),
         "item.completed" => emit_codex_item_event(json, true, emit),
+        "error" | "turn.failed" => {
+            if let Some(message) = crate::codex_events::message_from_error_event(json) {
+                emit(AiAgentStreamEvent::Error { message });
+            }
+        }
         _ => {}
     }
 }
@@ -431,10 +436,11 @@ fn format_codex_error(stderr_output: String, status: String) -> String {
         return "Codex could not write to the active vault. Vault Safe uses a read-only Codex sandbox; switch to Power User for shell-backed local writes, or verify the selected vault folder is writable and retry. Writes outside the active vault remain blocked.".into();
     }
 
-    if stderr_output.trim().is_empty() {
+    let stderr_lines = crate::codex_events::actionable_stderr_lines(&stderr_output);
+    if stderr_lines.is_empty() {
         format!("codex exited with status {status}")
     } else {
-        stderr_output.lines().take(3).collect::<Vec<_>>().join("\n")
+        stderr_lines.join("\n")
     }
 }
 
@@ -1047,6 +1053,17 @@ printf '%s\n' '{"type":"item.completed","item":{"id":"msg_1","type":"agent_messa
             &events[0],
             AiAgentStreamEvent::TextDelta { text } if text == "All set"
         ));
+    }
+
+    #[test]
+    fn format_codex_error_ignores_non_actionable_stdin_noise() {
+        let message = format_codex_error(
+            "Reading additional input from stdin...\n2026-05-05T08:00:00.000000Z  WARN codex_core::plugins::manifest: plugin warning\n"
+                .into(),
+            "exit status: 1".into(),
+        );
+
+        assert_eq!(message, "codex exited with status exit status: 1");
     }
 
     #[test]
